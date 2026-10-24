@@ -288,12 +288,14 @@ final class WebSession {
     func wipeWebData() async {
         let types = WKWebsiteDataStore.allWebsiteDataTypes()
         let records = await withCheckedContinuation { (cont: CheckedContinuation<[WKWebsiteDataRecord], Never>) in
-            WKWebsiteDataStore.default().dataRecords(ofTypes: types) { cont.resume(returning: $0) }
+            WKWebsiteDataStore.default().fetchDataRecords(ofTypes: types) { cont.resume(returning: $0) }
         }
         let douyin = records.filter { $0.displayName.contains("douyin") }
         guard !douyin.isEmpty else { return }
+        // removeData 只接受 (ofTypes:modifiedSince:)，没有按 record 定向删除的重载；
+        // 抖音相关记录都在同一 data store 里，按 distantPast 全清即可。
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            WKWebsiteDataStore.default().removeData(ofTypes: types, for: douyin) { cont.resume() }
+            WKWebsiteDataStore.default().removeData(ofTypes: types, modifiedSince: .distantPast) { cont.resume() }
         }
     }
 

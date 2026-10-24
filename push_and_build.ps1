@@ -85,8 +85,15 @@ $CleanUrl = "https://github.com/$Full.git"
 Say "推送 main → $CleanUrl"
 $basic = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$Token"))
 
-& $Git -C $Root remote remove origin 2>$null | Out-Null
-& $Git -C $Root remote add origin $CleanUrl
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$existingRemotes = (& $Git -C $Root remote) 2>$null
+if ($existingRemotes -contains "origin") {
+  & $Git -C $Root remote remove origin 2>&1 | Out-Null
+}
+& $Git -C $Root remote add origin $CleanUrl 2>&1 | Out-Null
+$ErrorActionPreference = $prevEap
+if ($LASTEXITCODE -ne 0) { throw "配置 remote 失败（退出码 $LASTEXITCODE）" }
 
 $before = (& $Git -C $Root rev-parse HEAD).Trim()
 & $Git -C $Root -c "http.extraheader=AUTHORIZATION: basic $basic" push -u origin main
