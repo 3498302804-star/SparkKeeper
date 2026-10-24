@@ -34,6 +34,9 @@ if (-not (Test-Path $Git)) {
 }
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not (Test-Path (Join-Path $Root "SparkKeeper.xcodeproj"))) {
+  throw "这个脚本要放在 SparkKeeper 仓库根目录（含 SparkKeeper.xcodeproj 的那一层）"
+}
 $Api  = "https://api.github.com"
 $Hdr  = @{
   Authorization          = "Bearer $Token"
