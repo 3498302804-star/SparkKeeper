@@ -280,7 +280,7 @@ final class WebSession {
             if c.secure { props[.secure] = "TRUE" }
             guard let cookie = HTTPCookie(properties: props) else { continue }
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-                store.setCookie(cookie) { cont.resume(returning: ()) }
+                store.setCookie(cookie) { cont.resume() }
             }
         }
     }
@@ -293,7 +293,7 @@ final class WebSession {
         let douyin = records.filter { $0.displayName.contains("douyin") }
         guard !douyin.isEmpty else { return }
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            WKWebsiteDataStore.default().removeData(ofTypes: types, for: douyin) { cont.resume(returning: ()) }
+            WKWebsiteDataStore.default().removeData(ofTypes: types, for: douyin) { cont.resume() }
         }
     }
 
