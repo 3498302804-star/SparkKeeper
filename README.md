@@ -47,20 +47,41 @@ BGTaskScheduler / 前台 Timer  ──►  SparkRunner（单例，互斥执行�
 
 仓库里已经带了 `.github/workflows/build-ipa.yml`。
 
-1. 新建一个 GitHub 仓库（**Private** 建议，虽然代码没密钥）。
-2. 把本目录整个推上去：
+**A-0 当前状态**：`SparkKeeper/` 目录**已经是一个 git 仓库**（`main` 分支，历史里 5 个 commit），`.gitattributes` 已强制 LF、`build_ipa.sh` 已带可执行位。你只缺一个 GitHub 远程仓库和 token。
+
+**A-1 一条命令全自动（推荐）**
+
+在 `SparkKeeper` 目录下打开 PowerShell：
+
+```powershell
+# 先建一个 token：GitHub → Settings → Developer settings → Personal access tokens
+#   → Tokens (classic) → Generate new token → 勾 repo + workflow → 复制
+.\push_and_build.ps1 -Token ghp_你复制的token
+```
+
+它会依次：验证 token 归属 → 仓库不存在就自动创建 → 推送 `main` → 轮询 Actions → 构建失败打印失败步骤和日志链接 → 构建成功把 IPA 下载到 `.\out\`。
+
+可选参数：`-Repo 仓库名`、`-Private`（建成私有库）、`-NoWait`（只推不等待）、`-OutDir 目录`。
+
+**A-2 想要更省 Actions 额度：把仓库建成 Public**
+
+公开仓库的 Actions 完全免费、不限分钟。代码里没有密钥（Cookie 是本机运行时才产生、存在手机沙盒里），可以放心公开。
+
+**A-3 手动流程（不想用脚本时）**
+
+1. 新建一个 GitHub 仓库（**Private** 也行，见下面的额度说明）。
+2. 推上去：
    ```bash
    cd SparkKeeper
-   git init
-   git add .
-   git commit -m "init"
-   git branch -M main
    git remote add origin https://github.com/<你的用户名>/<仓库名>.git
    git push -u origin main
    ```
-3. 打开仓库 → **Actions** → 左侧 `Build unsigned IPA` → 右侧 `Run workflow`。
-   - `bundle_id`：默认 `com.yg.sparkkeeper`。**用免费开发者账号签名的话，建议改成唯一一点的**，比如 `com.yg.sparkkeeper.yourname`，避免和别人的撞。
-   - `app_name`：桌面显示名，默认 `火花管家`。
+   （`main` 分支和 commit 都已经有了，不用再 `git init` / `git add`。）
+3. 打开仓库 → **Actions** → 左侧 `Build unsigned IPA`。
+   - 推 `main` 会自动触发一次。
+   - 也可以点右侧 **Run workflow** 手动触发，并填：
+     - `bundle_id`：默认 `com.yg.sparkkeeper`。**用免费开发者账号签名的话，建议改成唯一一点的**，比如 `com.yg.sparkkeeper.yourname`，避免和别人的撞。
+     - `app_name`：桌面显示名，默认 `火花管家`。
 4. 等 6~12 分钟（首次拉 Xcode 会慢些）。
 5. 进这次 run → 底部 **Artifacts** → 下载 `SparkKeeper-unsigned-ipa.zip` → 解压得到 `SparkKeeper-unsigned.ipa`。
 
@@ -226,6 +247,9 @@ SparkKeeper/
 ├── SparkKeeper/Assets.xcassets/         # AppIcon（1024 单尺寸）+ AccentColor
 ├── tools/make_icon.py                   # Pillow 生成图标
 ├── build_ipa.sh                         # macOS 一键出未签名/已签名 IPA
+├── push_and_build.ps1                   # Windows：自动建库 + 推送 + 等构建 + 下载 IPA
+├── push_and_build.sh                    # macOS/Linux/WSL：同上
+├── .gitattributes                       # 强制 LF，避免 macOS runner 上脚本报 bad interpreter
 ├── .github/workflows/build-ipa.yml      # 云端 macOS 编译
 └── README.md
 ```

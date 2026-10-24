@@ -9,18 +9,24 @@ xcuserdata/
 *.xcuserstate
 *.xcscmblueprint
 *.xccheckout
+out/
 
-# 系统
+# System junk
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# 编辑器
+# Editor
 .vscode/
 .idea/
 *.swp
 
-# Python（图标生成脚本的缓存）
+# Python (icon generator cache)
 __pycache__/
 *.pyc
 .venv/
+
+# Local secrets (never commit)
+*.p12
+*.mobileprovision
+*.p8

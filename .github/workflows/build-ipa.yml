@@ -18,6 +18,9 @@ concurrency:
   group: ipa-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Archive & Package
