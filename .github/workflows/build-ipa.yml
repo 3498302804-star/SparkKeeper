@@ -1,0 +1,111 @@
+name: Build unsigned IPA
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      bundle_id:
+        description: "Bundle Identifier"
+        required: false
+        default: "com.yg.sparkkeeper"
+      app_name:
+        description: "显示名称（桌面图标下的名字）"
+        required: false
+        default: "火花管家"
+
+concurrency:
+  group: ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Archive & Package
+    runs-on: macos-15
+    timeout-minutes: 40
+
+    env:
+      SCHEME: SparkKeeper
+      PROJECT: SparkKeeper.xcodeproj
+      BUNDLE_ID: ${{ github.event.inputs.bundle_id || 'com.yg.sparkkeeper' }}
+      APP_NAME: ${{ github.event.inputs.app_name || '火花管家' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Verify project parses
+        run: |
+          xcodebuild -list -project "$PROJECT"
+
+      - name: Patch display name
+        run: |
+          plutil -replace CFBundleDisplayName -string "$APP_NAME" Support/Info.plist
+          echo "bundle id -> $BUNDLE_ID"
+          plutil -p Support/Info.plist | head -40
+
+      - name: Archive (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/SparkKeeper.xcarchive" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ENABLE_BITCODE=NO \
+            | tee "$RUNNER_TEMP/build.log"
+
+      - name: Package Payload
+        run: |
+          APP="$RUNNER_TEMP/SparkKeeper.xcarchive/Products/Applications/SparkKeeper.app"
+          if [ ! -d "$APP" ]; then
+            echo "::error::SparkKeeper.app not found"
+            tail -200 "$RUNNER_TEMP/build.log"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/stage/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/stage/Payload/"
+          rm -rf "$RUNNER_TEMP/stage/Payload/SparkKeeper.app/_CodeSignature"
+          rm -f  "$RUNNER_TEMP/stage/Payload/SparkKeeper.app/embedded.mobileprovision"
+          cd "$RUNNER_TEMP/stage"
+          zip -qry "$RUNNER_TEMP/SparkKeeper-unsigned.ipa" Payload
+          ls -lh "$RUNNER_TEMP/SparkKeeper-unsigned.ipa"
+          unzip -l "$RUNNER_TEMP/SparkKeeper-unsigned.ipa" | head -30
+
+      - name: Sanity check IPA
+        run: |
+          IPA="$RUNNER_TEMP/SparkKeeper-unsigned.ipa"
+          rm -rf "$RUNNER_TEMP/verify" && mkdir -p "$RUNNER_TEMP/verify"
+          unzip -q "$IPA" -d "$RUNNER_TEMP/verify"
+          BIN="$RUNNER_TEMP/verify/Payload/SparkKeeper.app/SparkKeeper"
+          test -f "$BIN" || { echo "::error::executable missing"; exit 1; }
+          file "$BIN"
+          otool -l "$BIN" | grep -A2 LC_BUILD_VERSION | head -8 || true
+          plutil -p "$RUNNER_TEMP/verify/Payload/SparkKeeper.app/Info.plist" | head -60
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SparkKeeper-unsigned-ipa
+          path: ${{ runner.temp }}/SparkKeeper-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: ${{ runner.temp }}/build.log
+          if-no-files-found: ignore

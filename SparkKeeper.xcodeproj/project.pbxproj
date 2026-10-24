@@ -1,0 +1,345 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		3A0000000000000000000001 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000001 /* App.swift */; };
+		3A0000000000000000000002 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000002 /* Models.swift */; };
+		3A0000000000000000000003 /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000003 /* Store.swift */; };
+		3A0000000000000000000004 /* WebSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000004 /* WebSession.swift */; };
+		3A0000000000000000000005 /* DouyinJS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000005 /* DouyinJS.swift */; };
+		3A0000000000000000000006 /* SparkRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000006 /* SparkRunner.swift */; };
+		3A0000000000000000000007 /* Scheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000007 /* Scheduler.swift */; };
+		3A0000000000000000000008 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000008 /* HomeView.swift */; };
+		3A0000000000000000000009 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0000000000000000000009 /* SettingsView.swift */; };
+		3A000000000000000000000A /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A000000000000000000000A /* HistoryView.swift */; };
+		3A000000000000000000000B /* SessionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A000000000000000000000B /* SessionViews.swift */; };
+		3A000000000000000000000C /* SparkIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A000000000000000000000C /* SparkIntent.swift */; };
+		3A000000000000000000000D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2A000000000000000000000E /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		2A0000000000000000000001 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
+		2A0000000000000000000002 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		2A0000000000000000000003 /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
+		2A0000000000000000000004 /* WebSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSession.swift; sourceTree = "<group>"; };
+		2A0000000000000000000005 /* DouyinJS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DouyinJS.swift; sourceTree = "<group>"; };
+		2A0000000000000000000006 /* SparkRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkRunner.swift; sourceTree = "<group>"; };
+		2A0000000000000000000007 /* Scheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Scheduler.swift; sourceTree = "<group>"; };
+		2A0000000000000000000008 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		2A0000000000000000000009 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		2A000000000000000000000A /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		2A000000000000000000000B /* SessionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViews.swift; sourceTree = "<group>"; };
+		2A000000000000000000000C /* SparkIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparkIntent.swift; sourceTree = "<group>"; };
+		2A000000000000000000000D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		2A000000000000000000000E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		2A000000000000000000000F /* SparkKeeper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SparkKeeper.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		1A0000000000000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1A0000000000000000000004 = {
+			isa = PBXGroup;
+			children = (
+				1A0000000000000000000010 /* SparkKeeper */,
+				1A0000000000000000000011 /* Support */,
+				1A0000000000000000000005 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		1A0000000000000000000005 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				2A000000000000000000000F /* SparkKeeper.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		1A0000000000000000000010 /* SparkKeeper */ = {
+			isa = PBXGroup;
+			children = (
+				2A0000000000000000000001 /* App.swift */,
+				1A0000000000000000000012 /* Model */,
+				1A0000000000000000000013 /* Engine */,
+				1A0000000000000000000014 /* UI */,
+				1A0000000000000000000015 /* Intents */,
+				2A000000000000000000000E /* Assets.xcassets */,
+			);
+			path = SparkKeeper;
+			sourceTree = "<group>";
+		};
+		1A0000000000000000000011 /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				2A000000000000000000000D /* Info.plist */,
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
+		1A0000000000000000000012 /* Model */ = {
+			isa = PBXGroup;
+			children = (
+				2A0000000000000000000002 /* Models.swift */,
+				2A0000000000000000000003 /* Store.swift */,
+			);
+			path = Model;
+			sourceTree = "<group>";
+		};
+		1A0000000000000000000013 /* Engine */ = {
+			isa = PBXGroup;
+			children = (
+				2A0000000000000000000004 /* WebSession.swift */,
+				2A0000000000000000000005 /* DouyinJS.swift */,
+				2A0000000000000000000006 /* SparkRunner.swift */,
+				2A0000000000000000000007 /* Scheduler.swift */,
+			);
+			path = Engine;
+			sourceTree = "<group>";
+		};
+		1A0000000000000000000014 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				2A0000000000000000000008 /* HomeView.swift */,
+				2A0000000000000000000009 /* SettingsView.swift */,
+				2A000000000000000000000A /* HistoryView.swift */,
+				2A000000000000000000000B /* SessionViews.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		1A0000000000000000000015 /* Intents */ = {
+			isa = PBXGroup;
+			children = (
+				2A000000000000000000000C /* SparkIntent.swift */,
+			);
+			path = Intents;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1A0000000000000000000006 /* SparkKeeper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1A000000000000000000000B /* Build configuration list for PBXNativeTarget "SparkKeeper" */;
+			buildPhases = (
+				1A0000000000000000000008 /* Sources */,
+				1A0000000000000000000003 /* Frameworks */,
+				1A0000000000000000000009 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SparkKeeper;
+			productName = SparkKeeper;
+			productReference = 2A000000000000000000000F /* SparkKeeper.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		1A0000000000000000000007 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					1A0000000000000000000006 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = 1A000000000000000000000A /* Build configuration list for PBXProject "SparkKeeper" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = "zh-Hans";
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				"zh-Hans",
+				en,
+				Base,
+			);
+			mainGroup = 1A0000000000000000000004;
+			productRefGroup = 1A0000000000000000000005 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1A0000000000000000000006 /* SparkKeeper */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		1A0000000000000000000009 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3A000000000000000000000D /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1A0000000000000000000008 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3A0000000000000000000001 /* App.swift in Sources */,
+				3A0000000000000000000002 /* Models.swift in Sources */,
+				3A0000000000000000000003 /* Store.swift in Sources */,
+				3A0000000000000000000004 /* WebSession.swift in Sources */,
+				3A0000000000000000000005 /* DouyinJS.swift in Sources */,
+				3A0000000000000000000006 /* SparkRunner.swift in Sources */,
+				3A0000000000000000000007 /* Scheduler.swift in Sources */,
+				3A0000000000000000000008 /* HomeView.swift in Sources */,
+				3A0000000000000000000009 /* SettingsView.swift in Sources */,
+				3A000000000000000000000A /* HistoryView.swift in Sources */,
+				3A000000000000000000000B /* SessionViews.swift in Sources */,
+				3A000000000000000000000C /* SparkIntent.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1A000000000000000000000C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		1A000000000000000000000D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		1A000000000000000000000E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Support/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yg.sparkkeeper;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		1A000000000000000000000F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Support/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yg.sparkkeeper;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1A000000000000000000000A /* Build configuration list for PBXProject "SparkKeeper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1A000000000000000000000C /* Debug */,
+				1A000000000000000000000D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1A000000000000000000000B /* Build configuration list for PBXNativeTarget "SparkKeeper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1A000000000000000000000E /* Debug */,
+				1A000000000000000000000F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 1A0000000000000000000007 /* Project object */;
+}
