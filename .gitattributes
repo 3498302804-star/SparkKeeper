@@ -2,6 +2,8 @@
 *.png binary
 *.ipa binary
 *.sh text eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
 *.swift text eol=lf
 *.yml text eol=lf
 *.plist text eol=lf
