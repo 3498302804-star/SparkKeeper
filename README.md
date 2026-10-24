@@ -51,17 +51,24 @@ BGTaskScheduler / 前台 Timer  ──►  SparkRunner（单例，互斥执行�
 
 **A-1 一条命令全自动（推荐）**
 
-在 `SparkKeeper` 目录下打开 PowerShell：
+在 `SparkKeeper` 目录下双击 `build.bat`，或者打开 PowerShell 跑：
 
 ```powershell
 # 先建一个 token：GitHub → Settings → Developer settings → Personal access tokens
 #   → Tokens (classic) → Generate new token → 勾 repo + workflow → 复制
-.\push_and_build.ps1 -Token ghp_你复制的token
+.\build.bat ghp_你复制的token
+```
+
+等价于直接调 PowerShell 脚本：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\push_and_build.ps1 -Token ghp_你复制的token
 ```
 
 它会依次：验证 token 归属 → 仓库不存在就自动创建 → 推送 `main` → 轮询 Actions → 构建失败打印失败步骤和日志链接 → 构建成功把 IPA 下载到 `.\out\`。
 
 可选参数：`-Repo 仓库名`、`-Private`（建成私有库）、`-NoWait`（只推不等待）、`-OutDir 目录`。
+macOS / Linux / WSL 上用 `./push_and_build.sh <token>`，流程一样。
 
 **A-2 想要更省 Actions 额度：把仓库建成 Public**
 
@@ -247,6 +254,7 @@ SparkKeeper/
 ├── SparkKeeper/Assets.xcassets/         # AppIcon（1024 单尺寸）+ AccentColor
 ├── tools/make_icon.py                   # Pillow 生成图标
 ├── build_ipa.sh                         # macOS 一键出未签名/已签名 IPA
+├── build.bat                            # Windows 双击即用（参数是你的 token）
 ├── push_and_build.ps1                   # Windows：自动建库 + 推送 + 等构建 + 下载 IPA
 ├── push_and_build.sh                    # macOS/Linux/WSL：同上
 ├── .gitattributes                       # 强制 LF，避免 macOS runner 上脚本报 bad interpreter
