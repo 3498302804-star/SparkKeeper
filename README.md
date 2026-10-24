@@ -1,4 +1,4 @@
-# 火花管家 · SparkKeeper
+# KA自动续火花 · SparkKeeper
 
 给自己的 iPhone 用的**抖音创作者中心「火花」自动续期**工具。原生 SwiftUI，登录态存在本机，定时在后台把每天一条的私信发出去，不依赖电脑常开。
 
@@ -88,7 +88,7 @@ macOS / Linux / WSL 上用 `./push_and_build.sh <token>`，流程一样。
    - 推 `main` 会自动触发一次。
    - 也可以点右侧 **Run workflow** 手动触发，并填：
      - `bundle_id`：默认 `com.yg.sparkkeeper`。**用免费开发者账号签名的话，建议改成唯一一点的**，比如 `com.yg.sparkkeeper.yourname`，避免和别人的撞。
-     - `app_name`：桌面显示名，默认 `火花管家`。
+     - `app_name`：桌面显示名，默认 `KA自动续火花`。
 4. 等 6~12 分钟（首次拉 Xcode 会慢些）。
 5. 进这次 run → 底部 **Artifacts** → 下载 `SparkKeeper-unsigned-ipa.zip` → 解压得到 `SparkKeeper-unsigned.ipa`。
 
@@ -140,7 +140,7 @@ TEAM_ID=你的10位TeamID ./build_ipa.sh signed   # 出已签名 IPA
    - **Bundle ID**：如果提示冲突，改一下最后一段，比如 `com.yg.sparkkeeper.a1`
    - 勾上 **Sideloadly! Sideload via Apple ID**（用免费证书）
 5. 点 **Start** → 输入 Apple ID 密码 → 可能要求输入**双重认证验证码**（在手机上收）。
-6. 成功后手机桌面出现「火花管家」。**第一次点开会被拦**：设置 → 通用 → VPN与设备管理 → 开发者 App → 点你的 Apple ID → 信任。
+6. 成功后手机桌面出现「KA自动续火花」。**第一次点开会被拦**：设置 → 通用 → VPN与设备管理 → 开发者 App → 点你的 Apple ID → 信任。
 7. iOS 16+ 还要开 **开发者模式**：设置 → 隐私与安全性 → 开发者模式 → 打开 → 重启手机 → 重启后确认。
 
 **7 天到期怎么办**：Sideloadly 再点一次 Start 覆盖安装，数据（登录 Cookie、好友列表、历史记录）都在 `Application Support/sparkkeeper.json` 里，覆盖安装不丢。

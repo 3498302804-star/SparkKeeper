@@ -26,7 +26,7 @@ struct HomeView: View {
                 logSection
             }
             .listStyle(.insetGrouped)
-            .navigationTitle("火花助手")
+            .navigationTitle("KA自动续火花")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {

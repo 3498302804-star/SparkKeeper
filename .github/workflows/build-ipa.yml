@@ -12,7 +12,7 @@ on:
       app_name:
         description: "显示名称（桌面图标下的名字）"
         required: false
-        default: "火花管家"
+        default: "KA自动续火花"
 
 concurrency:
   group: ipa-${{ github.ref }}
@@ -31,7 +31,7 @@ jobs:
       SCHEME: SparkKeeper
       PROJECT: SparkKeeper.xcodeproj
       BUNDLE_ID: ${{ github.event.inputs.bundle_id || 'com.yg.sparkkeeper' }}
-      APP_NAME: ${{ github.event.inputs.app_name || '火花管家' }}
+      APP_NAME: ${{ github.event.inputs.app_name || 'KA自动续火花' }}
 
     steps:
       - name: Checkout
