@@ -8,7 +8,7 @@ struct LoginWebView: View {
     @Environment(\.dismiss) var dismiss
 
     /// 登录态要落到哪个账号；nil = 第一个账号
-    var accountId: UUID?
+    var accountId: UUID? = nil
 
     @State private var reloadToken = UUID()
     @State private var busy = false
@@ -60,6 +60,7 @@ struct LoginWebView: View {
 
     /// 先落 Cookie 快照到目标账号，再回读一次登录态，最后退回离屏窗口。
     /// 一个账号都没有时自动建一个「主号」，避免白登录。
+    @MainActor
     private func finishLogin() async {
         busy = true
         defer { busy = false }
