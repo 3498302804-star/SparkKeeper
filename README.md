@@ -211,19 +211,29 @@ TrollStore 利用 CoreTrust 漏洞，装完的 App **永不过期、无需证书
 
 ---
 
-## 五、抖音改版了怎么办（选择器失效）
+## 五、续火花没成功怎么自查
 
-抖音的 DOM class 是混淆的，几个月就变一次。`Engine/DouyinJS.swift` 里所有选择器都是**三层递进**的：
+抖音创作者中心的 class 名是构建期哈希，改版就变。所以 `Engine/DouyinJS.swift`
+里**不依赖任何类名**，全部按「结构 + 文字」定位：
 
-1. 先试稳定语义属性（`aria-label`、`data-e2e`、`placeholder`、文本内容）
-2. 再试结构关系（`[contenteditable]`、`input[type=text]` 的父级按钮）
-3. 最后试可见性兜底（遍历可点击元素，找文字里含「发送」的那个）
+1. **会话行** = 左栏（`rect.left <= 视口宽 × 0.62`）里高度 12–170、归一化文本 1–40 字、子元素 ≤2 的叶子节点
+2. **点哪一层** = 从名字向上最多 10 层，找 `cursor:pointer` / `role=button` / `li` / class 含 `list-item|conversation|session|chat-item` 的祖先
+3. **输入框** = `[contenteditable]` / `textarea` / `[role=textbox]` 里可见、高 ≥18 宽 ≥60、优先取右栏最靠下的那个
+4. **发送键** = 文本精确等于 `发送` / `发 送` / `Send` 且子元素 ≤3 的按钮；点不动就退回回车键
+5. **是否登录** = 先看 URL 是否落在登录域，再看页面上有没有会话行 / 输入框；「扫码登录」这类文本只做最后兜底
 
-真失效了，用 App 内置的 **「诊断」** 页面：
+判断「发没发出去」也不再看按钮状态，而是**看输入框有没有被清空**——这是唯一可靠的成功信号。
 
-- 它会 dump 当前页面的 `names` / `classes` / `buttons` / `scrollable` / `login` / `editor` / `url` / `title`
-- 把 `editor` 那一段的结果发我，或者自己照着改 `DouyinJS.swift` 里的 `editorEl` / `sendButton`
-- 改完重新打 IPA、重签安装
+**真出问题时让 App 自己说哪儿坏了**：首页右上角「诊断」→「开始」→「复制」，
+把剪贴板内容整段发回来即可。它会输出：
+
+- `落点` —— 实际跳到的 URL（被重定向到登录页会立刻暴露）
+- `hasFocus` —— WebView 有没有在真正的 key window 里（false 就说明输入必然失败）
+- `iframe 数量与 src` —— 会话列表若在跨域 iframe 里，外层脚本永远抓不到
+- `会话名（N 个）` —— 结构识别结果；0 个就是左栏判定没命中
+- `会话行祖先链` —— 前 3 个会话名向上 7 层的 `TAG.class[宽×高]`，一眼看出该点哪层
+- `左栏 HTML（前 1500 字）` —— 真实类名结构，改版后照着调 `rowOf` / `findNameEl`
+- `可见按钮` —— 发送键到底叫什么
 
 ---
 

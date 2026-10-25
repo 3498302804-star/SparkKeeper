@@ -96,8 +96,16 @@ $ErrorActionPreference = $prevEap
 if ($LASTEXITCODE -ne 0) { throw "配置 remote 失败（退出码 $LASTEXITCODE）" }
 
 $before = (& $Git -C $Root rev-parse HEAD).Trim()
-& $Git -C $Root -c "http.extraheader=AUTHORIZATION: basic $basic" push -u origin main
-if ($LASTEXITCODE -ne 0) { throw "推送失败（退出码 $LASTEXITCODE）" }
+# github.com:443 经常被中途重置（Recv failure / schannel closed abruptly），
+# 而 api.github.com 同一时刻是好的。所以 push 必须带退避重试。
+$pushOk = $false
+for ($i = 1; $i -le 8; $i++) {
+  & $Git -C $Root -c "http.extraheader=AUTHORIZATION: basic $basic" push -u origin main 2>&1 | Out-Host
+  if ($LASTEXITCODE -eq 0) { $pushOk = $true; break }
+  Say "推送第 $i 次失败（退出码 $LASTEXITCODE），$((3 * $i)) 秒后重试"
+  Start-Sleep -Seconds (3 * $i)
+}
+if (-not $pushOk) { throw "推送失败：8 次重试都没成功（github.com:443 被重置）" }
 Say "推送完成：$before"
 
 if ($NoWait) {
@@ -157,9 +165,18 @@ if (-not $ipa) { throw "没有找到 ipa artifact" }
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out-Null }
 $zipPath = Join-Path $OutDir "SparkKeeper-unsigned-ipa.zip"
 
-# artifact 下载需要跟随重定向到签名 URL，不能用 Authorization 头
-$tmpHdr = @{ "User-Agent" = "SparkKeeper-Push"; Accept = "application/vnd.github+json" }
-Invoke-WebRequest -Uri $ipa.archive_download_url -Headers $tmpHdr -OutFile $zipPath -MaximumRedirection 10
+# artifact 下载：GitHub 会 302 到对象存储的签名 URL。
+# Invoke-WebRequest 跟随重定向时会丢掉 Authorization 头 → 401 Requires authentication。
+# Net.WebClient 会自动跟随重定向并保留请求头，这是实测唯一稳的路子。
+$wc = New-Object System.Net.WebClient
+$wc.Headers.Add("Authorization", "token $Token")
+$wc.Headers.Add("User-Agent", "SparkKeeper-Push")
+$wc.Headers.Add("Accept", "application/vnd.github+json")
+try {
+  $wc.DownloadFile($ipa.archive_download_url, $zipPath)
+} finally {
+  $wc.Dispose()
+}
 Say "已下载：$zipPath（$([math]::Round((Get-Item $zipPath).Length/1MB,2)) MB）"
 
 Expand-Archive -Path $zipPath -DestinationPath $OutDir -Force

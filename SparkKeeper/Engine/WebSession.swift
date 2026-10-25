@@ -70,7 +70,10 @@ final class WebSession {
         }
         let host = UIView(frame: WebSession.canvas)
         host.backgroundColor = .clear
-        host.alpha = 0.02
+        // 刻意保持 alpha = 1：alpha 过低时 WebKit/CoreAnimation 可能跳过图层
+        // 渲染与脚本调度，页面看着加载完了其实 DOM 没被更新。容器本身放在
+        // root 的最底层（index 0），被上面所有视图盖住，用户看不到。
+        host.alpha = 1.0
         host.isUserInteractionEnabled = false
         host.clipsToBounds = true
         root.insertSubview(host, at: 0)
