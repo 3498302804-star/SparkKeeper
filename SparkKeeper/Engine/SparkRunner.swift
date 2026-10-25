@@ -61,7 +61,7 @@ final class SparkRunner {
                 store.log("账号 \(acc.title) 今天已全部成功，跳过")
                 continue
             }
-            await runAccount(acc, settings: settings, maxTargets: maxTargets)
+            await runAccount(acc, settings: settings, force: force, maxTargets: maxTargets)
         }
         store.log("===== 执行结束 =====")
         notifierSummary()
@@ -82,7 +82,7 @@ final class SparkRunner {
         await session.injectCore()
     }
 
-    private func runAccount(_ acc: Account, settings: AppSettings, maxTargets: Int? = nil) async {
+    private func runAccount(_ acc: Account, settings: AppSettings, force: Bool, maxTargets: Int? = nil) async {
         let store = Store.shared
         let session = WebSession.shared
         store.log("→ 账号 \(acc.title)")
