@@ -51,6 +51,14 @@ struct LoginWebView: View {
             .onAppear {
                 WebSession.shared.present()
                 Task {
+                    // 先把已保存的登录态灌回 cookie store。
+                    // 不做这一步的话，每次进登录页都是游客身份，明明没失效也要重扫码。
+                    if let id = targetId,
+                       let acc = store.accounts.first(where: { $0.id == id }),
+                       !acc.cookies.isEmpty {
+                        await WebSession.shared.importCookies(acc.cookies)
+                        store.log("已回灌 \(acc.cookies.count) 条历史 Cookie")
+                    }
                     try? await WebSession.shared.load(store.settings.homeURL)
                 }
             }
@@ -68,7 +76,7 @@ struct LoginWebView: View {
         busy = true
         defer { busy = false }
 
-        let sessionNames: Set<String> = ["sessionid", "sessionid_ss", "sid_tt", "sid_guard", "passport_auth_status"]
+        let sessionNames = WebSession.sessionCookieNames
         var cookies = await WebSession.shared.exportCookies()
         var ok = cookies.contains { sessionNames.contains($0.name) }
 
@@ -270,15 +278,34 @@ struct DiagnosticsView: View {
     @State private var report = "点右上角「开始」读取当前页面"
     @State private var busy = false
     @State private var copied = false
+    @State private var tryName = ""
 
     var body: some View {
         NavigationView {
             ScrollView {
-                Text(report)
-                    .font(.system(size: 11, design: .monospaced))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-                    .textSelection(.enabled)
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(report)
+                        .font(.system(size: 11, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+
+                    Divider()
+
+                    // 一步定位：真的走一遍「找到会话 → 点开 → 输入 → 发送」，
+                    // 每一步的返回值都摊开，比看一堆结构 dump 快得多。
+                    HStack(spacing: 8) {
+                        TextField("好友昵称", text: $tryName)
+                            .textFieldStyle(.roundedBorder)
+                            .autocapitalization(.none)
+                            .disableAutocorrection(true)
+                        Button(busy ? "…" : "试发") { Task { await trySend() } }
+                            .disabled(busy || tryName.isEmpty)
+                    }
+                    Text("试发会真的给这个好友发一条消息，用来一次性看清断在哪一步。")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .padding()
             }
             .navigationTitle("页面诊断")
             .navigationBarTitleDisplayMode(.inline)
@@ -402,5 +429,83 @@ struct DiagnosticsView: View {
 
         report = out.joined(separator: "\n")
         store.log("诊断完成：会话名 \(names.count) 个，输入框 \(bool(info["editor"]) ? "有" : "无")，登录墙 \(bool(info["login"]) ? "命中" : "未命中")")
+    }
+
+    /// 真的对一个好友跑一遍完整链路，把每一步的返回值贴出来。
+    /// 看结构 dump 只能猜哪一步断了，试发一次就知道。
+    @MainActor
+    private func trySend() async {
+        let name = tryName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        busy = true
+        copied = false
+        defer { busy = false }
+
+        let session = WebSession.shared
+        let now = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+        let msg = "KA 自检 \(now)"
+        var out: [String] = ["=== 试发「\(name)」 ==="]
+        out.append("时间：\(now)")
+        out.append("落点：\(session.lastLoadedURL)")
+
+        await session.injectCore()
+
+        let typed = await session.jsObject(DouyinJS.openAndType, args: [
+            "name": name,
+            "message": msg,
+            "timeoutMs": 20000,
+            "maxScrolls": 4
+        ])
+        if typed.isEmpty {
+            out.append("")
+            out.append("① 打开会话：脚本无返回 —— WebContent 可能已崩，或页面在跨域 iframe 里")
+            report = out.joined(separator: "\n")
+            return
+        }
+
+        let okTyped = bool(typed["ok"])
+        out.append("")
+        out.append("① 打开会话 + 输入：\(okTyped ? "成功" : "失败")")
+        out.append("   reason：\(str(typed["reason"]))")
+        if let h = typed["header"] as? String, !h.isEmpty {
+            out.append("   会话头：\(h)")
+        }
+        if let t = typed["typed"] as? String, !t.isEmpty {
+            out.append("   输入框内容：\(t)")
+        }
+        let friends = list(typed["friends"])
+        if !friends.isEmpty {
+            out.append("   当时识别到 \(friends.count) 个会话：")
+            out.append(contentsOf: friends.prefix(20).map { "     · \($0)" })
+        }
+        if let d = typed["detail"] {
+            out.append("   输入细节：\(d)")
+        }
+
+        guard okTyped else {
+            out.append("")
+            out.append("输入没落地，发送不必试。点「复制」把这段发回即可。")
+            report = out.joined(separator: "\n")
+            store.log("诊断试发「\(name)」：输入阶段失败（\(str(typed["reason"]))）")
+            return
+        }
+
+        let sent = await session.jsObject(DouyinJS.submit)
+        let okSent = bool(sent["ok"])
+        out.append("")
+        out.append("② 发送：\(okSent ? "成功" : "失败")")
+        out.append("   via：\(str(sent["via"]))")
+        out.append("   reason：\(str(sent["reason"]))")
+        if let left = sent["leftover"] as? String, !left.isEmpty {
+            out.append("   输入框残留：\(left)")
+        }
+        out.append("")
+        out.append(okSent
+                   ? "全链路通了 —— 输入、发送都正常。"
+                   : "输入能落但发不出去 —— 看上面的 via / reason，是发送键定位或回车事件的问题。")
+
+        report = out.joined(separator: "\n")
+        let verdict = okSent ? "成功（\(str(sent["via"]))）" : "失败（\(str(sent["reason"]))）"
+        store.log("诊断试发「\(name)」：\(verdict)")
     }
 }

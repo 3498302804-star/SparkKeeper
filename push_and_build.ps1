@@ -1,4 +1,4 @@
-﻿<#
+<#
   push_and_build.ps1 —— 一条命令把 SparkKeeper 推到 GitHub 并跑出 IPA
   ------------------------------------------------------------------
   用法（在本目录下，PowerShell 5.1 即可）：
@@ -96,8 +96,12 @@ $ErrorActionPreference = $prevEap
 if ($LASTEXITCODE -ne 0) { throw "配置 remote 失败（退出码 $LASTEXITCODE）" }
 
 $before = (& $Git -C $Root rev-parse HEAD).Trim()
-# github.com:443 经常被中途重置（Recv failure / schannel closed abruptly），
+# github.com:443 经常被中途重置（Recv failure / schannel closed abruptly）或直接超时，
 # 而 api.github.com 同一时刻是好的。所以 push 必须带退避重试。
+# 注意：git 失败会往 stderr 写字，在 $ErrorActionPreference = "Stop" 下
+# 会被 PowerShell 当成终止性异常，循环根本走不到第二次——必须临时切 Continue。
+$prevEapPush = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 $pushOk = $false
 for ($i = 1; $i -le 8; $i++) {
   & $Git -C $Root -c "http.extraheader=AUTHORIZATION: basic $basic" push -u origin main 2>&1 | Out-Host
@@ -105,6 +109,7 @@ for ($i = 1; $i -le 8; $i++) {
   Say "推送第 $i 次失败（退出码 $LASTEXITCODE），$((3 * $i)) 秒后重试"
   Start-Sleep -Seconds (3 * $i)
 }
+$ErrorActionPreference = $prevEapPush
 if (-not $pushOk) { throw "推送失败：8 次重试都没成功（github.com:443 被重置）" }
 Say "推送完成：$before"
 

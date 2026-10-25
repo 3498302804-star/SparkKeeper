@@ -11,10 +11,18 @@ enum DouyinJS {
 
     static let core = #"""
     (function () {
-      if (window.__SK && window.__SK.version === 4) return "ok";
+      if (window.__SK && window.__SK.version === 5) return "ok";
 
       const sleep = (ms) => new Promise(r => setTimeout(r, ms));
       const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
+      // 用户手填的名字和左栏显示的昵称经常差装饰：emoji、零宽、全角空格、
+      // 「·」分隔符、"已读"角标之类。只留字母数字汉字再做一次比较。
+      // 用 RegExp 构造而不是字面量：\p{...} 万一不被支持会变成语法错误，构造式能兜底。
+      const TIGHT_RE = (function () {
+        try { return new RegExp("[^\\p{L}\\p{N}]", "gu"); }
+        catch (e) { return new RegExp("[^0-9A-Za-z\\u4e00-\\u9fa5]", "g"); }
+      })();
+      const tight = (s) => (s || "").replace(TIGHT_RE, "").toLowerCase();
       const vw = () => window.innerWidth || document.documentElement.clientWidth || 1280;
       const vh = () => window.innerHeight || document.documentElement.clientHeight || 820;
 
@@ -74,15 +82,20 @@ enum DouyinJS {
       function findNameEl(name) {
         const target = norm(name);
         if (!target) return null;
+        const tg = tight(target);
         const cands = leftLeaves();
         const hits = [];
         for (let i = 0; i < cands.length; i++) {
           const c = cands[i];
           if (JUNK.test(c.t)) continue;
+          const ct = tight(c.t);
           let s = 0;
-          if (c.t === target) s = 4;
-          else if (c.t.length >= 2 && c.t.indexOf(target) >= 0) s = 3;
+          if (c.t === target) s = 5;
+          else if (tg && tg.length >= 1 && ct === tg) s = 4;          // 只差装饰符号
+          else if (c.t.length >= 2 && c.t.indexOf(target) >= 0) s = 3; // 名字里带角标
+          else if (tg && tg.length >= 2 && ct.indexOf(tg) >= 0) s = 3;
           else if (target.indexOf(c.t) >= 0 && c.t.length >= 2) s = 2;
+          else if (tg && ct.length >= 2 && tg.indexOf(ct) >= 0) s = 2;
           if (s > 0) hits.push({ el: c.el, r: c.r, s: s });
         }
         if (!hits.length) return null;
@@ -304,7 +317,7 @@ enum DouyinJS {
       }
 
       const SK = {
-        version: 4,
+        version: 5,
         sleep: sleep, norm: norm, visible: visible, pick: pick, readText: readText,
         loginWall: loginWall, editorEl: editorEl, editors: editors,
         scrollHost: scrollHost, sendButton: sendButton, header: header,

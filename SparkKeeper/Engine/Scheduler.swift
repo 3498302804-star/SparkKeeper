@@ -41,7 +41,9 @@ final class Scheduler {
         let work = Task { @MainActor in
             Store.shared.log("后台任务被系统唤起")
             Scheduler.shared.scheduleNext()
-            await SparkRunner.shared.run(force: false)
+            // 30 秒预算下按默认 20 个目标跑必然跑不完，与其被系统掐断在半路，
+            // 不如每轮只推进 3 个，靠后续多次唤醒补齐。
+            await SparkRunner.shared.run(force: false, maxTargets: 3)
             task.setTaskCompleted(success: true)
         }
         currentTask = work

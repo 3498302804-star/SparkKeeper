@@ -8,6 +8,9 @@ final class SparkRunner {
     static let shared = SparkRunner()
     private init() {}
 
+    /// 通知标题统一走这里，避免各处写死旧名字
+    static let appName = "KA自动续火花"
+
     private var busy = false
 
     // MARK: - 入口
@@ -15,7 +18,9 @@ final class SparkRunner {
     /// - Parameters:
     ///   - onlyAccount: 只跑指定账号（手动触发时用），nil 表示全部启用的账号
     ///   - force: 忽略「今天已经成功过」的判断
-    func run(onlyAccount: UUID? = nil, force: Bool = true) async {
+    ///   - maxTargets: 本次最多处理多少个好友；后台被系统唤起时传小值，
+    ///     因为 BGAppRefresh 只给约 30 秒，按默认 20 个根本跑不完。
+    func run(onlyAccount: UUID? = nil, force: Bool = true, maxTargets: Int? = nil) async {
         guard !busy else {
             Store.shared.log("已有任务在跑，跳过本次触发")
             return
@@ -43,7 +48,7 @@ final class SparkRunner {
 
         guard !targets.isEmpty else {
             store.log("没有可用账号/目标，退出")
-            Notifier.post(title: "火花助手", body: "没有可用账号或目标好友")
+            Notifier.post(title: SparkRunner.appName, body: "没有可用账号或目标好友")
             return
         }
 
@@ -56,7 +61,7 @@ final class SparkRunner {
                 store.log("账号 \(acc.title) 今天已全部成功，跳过")
                 continue
             }
-            await runAccount(acc, settings: settings)
+            await runAccount(acc, settings: settings, maxTargets: maxTargets)
         }
         store.log("===== 执行结束 =====")
         notifierSummary()
@@ -77,7 +82,7 @@ final class SparkRunner {
         await session.injectCore()
     }
 
-    private func runAccount(_ acc: Account, settings: AppSettings) async {
+    private func runAccount(_ acc: Account, settings: AppSettings, maxTargets: Int? = nil) async {
         let store = Store.shared
         let session = WebSession.shared
         store.log("→ 账号 \(acc.title)")
@@ -93,11 +98,17 @@ final class SparkRunner {
             await session.injectCore()
 
             let probe = await session.jsObject(DouyinJS.probeLogin)
-            if (probe["login"] as? Bool) == true {
+            let wall = (probe["login"] as? Bool) ?? false
+            let early = await session.exportCookies()
+            let hasTicket = early.contains { WebSession.sessionCookieNames.contains($0.name) }
+            if wall && !hasTicket {
                 store.update(acc.id) { $0.needLogin = true; $0.lastResult = "登录失效" }
                 store.log("  登录态失效，需在 App 内重新扫码登录")
-                Notifier.post(title: "火花助手", body: "\(acc.title) 登录已失效，请打开 App 重新登录")
+                Notifier.post(title: SparkRunner.appName, body: "\(acc.title) 登录已失效，请打开 App 重新登录")
                 return
+            }
+            if wall {
+                store.log("  页面结构像登录页，但 cookie 里有会话票据，继续往下走")
             }
 
             try await session.load(settings.chatURL)
@@ -124,11 +135,22 @@ final class SparkRunner {
             store.update(acc.id) { $0.cookies = cookies }
 
             var okCount = 0
+            var skipCount = 0
             var failNames: [String] = []
-            let list = Array(acc.targets.filter(\.enabled).prefix(max(1, settings.maxTargetsPerRun)))
+            let cap = max(1, maxTargets ?? settings.maxTargetsPerRun)
+            let list = Array(acc.targets.filter(\.enabled).prefix(cap))
 
             for t in list {
                 if Task.isCancelled { break }
+
+                // 今天已经发成功过的就不重发 —— 两次手动触发不该把同一条消息刷两遍
+                if !force, t.lastOk, let sent = t.lastSent, Calendar.current.isDateInToday(sent) {
+                    store.log("  · 目标 \(t.name) 今天已发过，跳过")
+                    okCount += 1
+                    skipCount += 1
+                    continue
+                }
+
                 let msg = store.buildMessage(account: acc.title, target: t.name)
                 store.log("  · 目标 \(t.name)")
                 var ok = false
@@ -148,7 +170,7 @@ final class SparkRunner {
                             "message": msg,
                             "timeoutMs": settings.perTargetTimeout * 1000,
                             "maxScrolls": settings.maxScrolls
-                        ])
+                        ], timeout: Double(settings.perTargetTimeout) + 45)
 
                         let opened = (res["ok"] as? Bool) ?? false
                         if !opened {
@@ -169,11 +191,14 @@ final class SparkRunner {
                             detail = "演练：已输入未发送"
                             _ = try? await session.js("""
                             const e = window.__SK && window.__SK.editorEl();
-                            if (e) { e.innerText = ""; }
+                            if (e) {
+                              if (e.tagName === "TEXTAREA" || e.tagName === "INPUT") { e.value = ""; }
+                              else { e.innerText = ""; }
+                            }
                             return true;
-                            """)
+                            """, timeout: 20)
                         } else {
-                            let sr = await session.jsObject(DouyinJS.submit)
+                            let sr = await session.jsObject(DouyinJS.submit, timeout: 30)
                             ok = (sr["ok"] as? Bool) ?? false
                             let via = (sr["via"] as? String) ?? "enter"
                             let leftover = (sr["leftover"] as? String) ?? ""
@@ -201,7 +226,9 @@ final class SparkRunner {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
             }
 
-            let stamp = "成功 \(okCount)/\(list.count)"
+            let stamp = skipCount > 0
+                ? "成功 \(okCount)/\(list.count)（\(skipCount) 个今天已发过）"
+                : "成功 \(okCount)/\(list.count)"
             store.update(acc.id) { a in
                 a.lastRun = Date()
                 a.lastResult = failNames.isEmpty
@@ -234,11 +261,14 @@ final class SparkRunner {
         let probe = await session.jsObject(DouyinJS.probeLogin)
         let wall = (probe["login"] as? Bool) ?? false
         let cookies = await session.exportCookies()
+        // cookie 里有会话票据，比页面结构判定硬得多：创作者中心首页的结构经常被误判成登录墙
+        let hasTicket = cookies.contains { WebSession.sessionCookieNames.contains($0.name) }
+        let dead = wall && !hasTicket
         store.update(id) { a in
             a.cookies = cookies
-            a.needLogin = wall
-            a.lastResult = wall ? "登录失效" : "登录正常"
+            a.needLogin = dead
+            a.lastResult = dead ? "登录失效" : "登录正常"
         }
-        store.log(wall ? "登录状态：失效" : "登录状态：正常（\(cookies.count) 条 Cookie）")
+        store.log(dead ? "登录状态：失效" : "登录状态：正常（\(cookies.count) 条 Cookie）")
     }
 }

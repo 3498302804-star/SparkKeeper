@@ -151,7 +151,9 @@ final class WebSession {
     /// - Parameters:
     ///   - body: 异步函数体
     ///   - args: 以 `const 名字 = 值;` 预置到函数体内的变量表
-    func js(_ body: String, args: [String: Any] = [:]) async throws -> Any? {
+    ///   - timeout: 兜底上限。JS 自己会按业务超时先返回，这里只是防止卡死；
+    ///              按具体调用传，别一律等 180 秒。
+    func js(_ body: String, args: [String: Any] = [:], timeout: TimeInterval = 120) async throws -> Any? {
         let token = UUID().uuidString
         let decls = args.keys.sorted().compactMap { key -> String? in
             guard let lit = WebSession.jsonLiteral(args[key]) else { return nil }
@@ -190,7 +192,7 @@ final class WebSession {
         })();
         """
 
-        let deadline = Date().addingTimeInterval(180)
+        let deadline = Date().addingTimeInterval(max(10, timeout))
         while Date() < deadline {
             let raw = try? await webView.evaluateJavaScript(probe)
             if let s = raw as? String,
@@ -253,8 +255,8 @@ final class WebSession {
         return "\"\""
     }
 
-    func jsObject(_ body: String, args: [String: Any] = [:]) async -> [String: Any] {
-        let raw = try? await js(body, args: args)
+    func jsObject(_ body: String, args: [String: Any] = [:], timeout: TimeInterval = 120) async -> [String: Any] {
+        let raw = try? await js(body, args: args, timeout: timeout)
         if let d = raw as? [String: Any] { return d }
         if let d = raw as? [AnyHashable: Any] {
             var out: [String: Any] = [:]
@@ -270,6 +272,12 @@ final class WebSession {
     }
 
     // MARK: - Cookie
+
+    /// 抖音真正用来认「已登录」的 cookie 名。命中任意一个就算拿到会话票据。
+    /// 用 cookie 判断比用页面结构判断可靠：创作者中心首页的骨架经常被误认成登录墙。
+    static let sessionCookieNames: Set<String> = [
+        "sessionid", "sessionid_ss", "sid_tt", "sid_guard", "passport_auth_status"
+    ]
 
     func exportCookies() async -> [StoredCookie] {
         await withCheckedContinuation { (cont: CheckedContinuation<[StoredCookie], Never>) in
