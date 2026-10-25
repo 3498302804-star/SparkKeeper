@@ -14,7 +14,7 @@ struct HistoryView: View {
                 }
                 ForEach(grouped.keys.sorted(by: >), id: \.self) { day in
                     Section(header: Text(day)) {
-                        ForEach(grouped[day]!.sorted(by: { $0.date > $1.date })) { r in
+                        ForEach((grouped[day] ?? []).sorted(by: { $0.date > $1.date })) { r in
                             HStack(alignment: .top) {
                                 Text(r.ok ? "✅" : "❌")
                                 VStack(alignment: .leading, spacing: 2) {

@@ -16,7 +16,8 @@ final class WebSession {
     static let desktopUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
 
     private(set) var webView: WKWebView!
-    private var offscreenWindow: UIWindow?
+    /// 隐藏宿主容器：挂在 key window 的根视图最底层，保证 WebKit 认为它「在屏」
+    private weak var hostView: UIView?
 
     init() {
         webView = WKWebView(frame: WebSession.canvas, configuration: WebSession.makeConfiguration())
@@ -26,8 +27,10 @@ final class WebSession {
         webView.backgroundColor = .clear
     }
 
-    /// 离屏画布尺寸：不能是 zero-size，否则 WebKit 会跳过渲染与脚本调度
-    private static let canvas = CGRect(x: 0, y: 0, width: 460, height: 900)
+    /// 离屏画布尺寸：不能是 zero-size，否则 WebKit 会跳过渲染与脚本调度。
+    /// 用 1280 宽是为了逼抖音走「桌面双栏」布局——列表在左、聊天在右，
+    /// 窄屏（460）会退化成单栏，DOM 结构完全不同，自动化选择器全对不上。
+    private static let canvas = CGRect(x: 0, y: 0, width: 1280, height: 820)
 
     /// 每次新建 webView 都必须配一份全新的 configuration。
     /// 同一个 WKWebViewConfiguration 实例被第二个 WKWebView 复用会抛
@@ -40,23 +43,40 @@ final class WebSession {
         return cfg
     }
 
-    // MARK: - 离屏宿主
+    // MARK: - 隐藏宿主
 
-    private func ensureOffscreenWindow() {
-        guard offscreenWindow == nil else { return }
+    /// 保证 webView 有一个「在窗口里」的宿主容器。
+    ///
+    /// 关键：只在 webView **没有任何 superview** 时才挂上去，绝不从登录页的
+    /// 可见容器里把它抢走。旧实现 `present()` → `ensureOffscreenWindow()` →
+    /// `embed(into: vc.view)` 会在用户刚打开登录 sheet 时把 WebView 搬进一个
+    /// `windowLevel = -1000`、`alpha = 0.02`、从不 makeKey 的窗口，结果就是
+    /// 登录页白屏 + `document.hasFocus()` 恒为 false + `execCommand` 全部失败。
+    @discardableResult
+    private func ensureHost() -> Bool {
+        if let h = hostView, h.window != nil {
+            if webView.superview == nil { embed(into: h) }
+            return true
+        }
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
-        guard let scene else { return }
-        let w = UIWindow(windowScene: scene)
-        w.frame = CGRect(x: 0, y: 0, width: 460, height: 900)
-        w.windowLevel = UIWindow.Level(rawValue: -1000)
-        w.alpha = 0.02
-        w.isHidden = false
-        let vc = UIViewController()
-        vc.view.backgroundColor = .clear
-        w.rootViewController = vc
-        offscreenWindow = w
-        embed(into: vc.view)
+        guard let scene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first else {
+            Store.shared.log("找不到 windowScene，WebView 无法挂载")
+            return false
+        }
+        guard let keyWin = scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first,
+              let root = keyWin.rootViewController?.view else {
+            Store.shared.log("找不到 key window，WebView 无法挂载")
+            return false
+        }
+        let host = UIView(frame: WebSession.canvas)
+        host.backgroundColor = .clear
+        host.alpha = 0.02
+        host.isUserInteractionEnabled = false
+        host.clipsToBounds = true
+        root.insertSubview(host, at: 0)
+        hostView = host
+        if webView.superview == nil { embed(into: host) }
+        return true
     }
 
     /// 把 webView 嵌入给定容器（登录页会调用）
@@ -67,18 +87,14 @@ final class WebSession {
         pin(webView, to: container)
     }
 
-    /// 登录页出现时：把离屏窗口提到最前，避免 WebView 因 zero-size 不渲染
-    func present() {
-        ensureOffscreenWindow()
-        offscreenWindow?.isHidden = false
-    }
+    /// 登录页出现时调用：刻意留空。
+    /// 登录全程 WebView 必须留在用户看得见的 sheet 容器里。
+    func present() {}
 
-    /// 登录页关闭后：放回离屏窗口，保持会话存活
+    /// 登录页关闭后：放回隐藏宿主，保持会话存活
     func detachBackToOffscreen() {
-        ensureOffscreenWindow()
-        guard let host = offscreenWindow?.rootViewController?.view else { return }
+        guard let host = hostView, host.window != nil else { return }
         embed(into: host)
-        offscreenWindow?.isHidden = false
     }
 
     private func pin(_ child: UIView, to host: UIView) {
@@ -93,9 +109,12 @@ final class WebSession {
 
     // MARK: - 导航
 
+    /// 最近一次导航结束后的真实 URL（可能被重定向，和请求的 URL 不同）
+    private(set) var lastLoadedURL: String = ""
+
     func load(_ urlString: String, timeout: TimeInterval = 40) async throws {
         guard let url = URL(string: urlString), url.scheme != nil else { throw SparkError.badURL }
-        ensureOffscreenWindow()
+        guard ensureHost() else { throw SparkError.js("webview-no-host") }
         let before = webView.url?.absoluteString
         let req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
         webView.load(req)
@@ -104,17 +123,18 @@ final class WebSession {
         // 阶段一：等导航真正开始（load() 返回后 isLoading 有一小段还是 false，
         // 直接判 isLoading 会瞬间跳出，后续脚本全打在旧页面上）
         while Date().timeIntervalSince(t0) < 8 {
-            try? await Task.sleep(nanoseconds: 100_000_000)
+            try await Task.sleep(nanoseconds: 100_000_000)
             if webView.isLoading { break }
             if let u = webView.url?.absoluteString, u != before, !webView.isLoading { break }
         }
         // 阶段二：等加载结束
         while Date().timeIntervalSince(t0) < timeout {
-            try? await Task.sleep(nanoseconds: 250_000_000)
+            try await Task.sleep(nanoseconds: 250_000_000)
             if !webView.isLoading { break }
         }
         // 给前端框架留出首屏渲染时间
-        try? await Task.sleep(nanoseconds: 1_200_000_000)
+        try await Task.sleep(nanoseconds: 1_500_000_000)
+        lastLoadedURL = webView.url?.absoluteString ?? ""
     }
 
     func reload() async {
@@ -326,8 +346,8 @@ final class WebSession {
         fresh.isOpaque = false
         fresh.backgroundColor = .clear
         webView = fresh
-        offscreenWindow?.rootViewController?.view.subviews.forEach { $0.removeFromSuperview() }
-        if let host = offscreenWindow?.rootViewController?.view {
+        if let host = hostView, host.window != nil {
+            host.subviews.forEach { $0.removeFromSuperview() }
             embed(into: host)
         }
     }

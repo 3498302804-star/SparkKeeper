@@ -1,21 +1,33 @@
 import Foundation
 
 /// 页面内注入的抖音创作者中心自动化脚本。
-/// 选择器分三层递进：精确 class → 模糊 class → 文本兜底，任一命中即可。
+///
+/// v4 设计原则：**不再依赖任何 CSS Modules 哈希类名**。
+/// 会话行靠「几何位置 + 文本内容」的结构特征识别，输入框靠「右栏 + 最靠下」，
+/// 发送键靠「文本 / aria-label / 尺寸最小」多路兜底。任何一处失效都有下一层接住。
 enum DouyinJS {
 
     // MARK: - 核心工具库
 
     static let core = #"""
     (function () {
-      if (window.__SK && window.__SK.version === 3) return "ok";
+      if (window.__SK && window.__SK.version === 4) return "ok";
+
       const sleep = (ms) => new Promise(r => setTimeout(r, ms));
       const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
+      const vw = () => window.innerWidth || document.documentElement.clientWidth || 1280;
+      const vh = () => window.innerHeight || document.documentElement.clientHeight || 820;
+
+      // 时间戳 / 相对时间，不是人名
+      const JUNK = /^(\d{1,2}:\d{2}|昨天|前天|刚刚|\d+\s*(秒|分钟|小时|天|周|个月)前|周[一二三四五六日]|\d{4}[-/]\d{1,2}[-/]\d{1,2})$/;
+      const BTN = /^(发送|发 送|send|Send|SEND)$/;
+
+      function rect(el) { try { return el.getBoundingClientRect(); } catch (e) { return null; } }
 
       function visible(el) {
         if (!el) return false;
-        const r = el.getBoundingClientRect();
-        if (r.width < 2 || r.height < 2) return false;
+        const r = rect(el);
+        if (!r || r.width < 2 || r.height < 2) return false;
         const cs = getComputedStyle(el);
         return cs.visibility !== "hidden" && cs.display !== "none" && cs.opacity !== "0";
       }
@@ -31,113 +43,272 @@ enum DouyinJS {
         return null;
       }
 
-      function nameSpans() {
+      // textarea / input 用 value，其余用 innerText
+      function readText(el) {
+        if (!el) return "";
+        const tag = (el.tagName || "").toUpperCase();
+        if (tag === "TEXTAREA" || tag === "INPUT") return norm(el.value);
+        return norm(el.innerText || el.textContent || "");
+      }
+
+      // 左栏「叶子文本块」：完全不看 class，只看几何 + 文本
+      function leftLeaves() {
         const out = [];
-        const sels = ['[class*="item-header-name-"]', '[class*="item-header-name"]', '[class*="conversation-item"] [class*="name"]'];
-        for (const s of sels) {
-          try {
-            document.querySelectorAll(s).forEach(el => { if (visible(el) && norm(el.innerText)) out.push(el); });
-          } catch (e) {}
+        const root = document.body;
+        if (!root) return out;
+        const lim = vw() * 0.62;
+        const all = root.querySelectorAll("*");
+        for (let i = 0; i < all.length; i++) {
+          const el = all[i];
+          if (el.children.length > 2) continue;
+          const r = rect(el);
+          if (!r || r.width < 20 || r.height < 12 || r.height > 170) continue;
+          if (r.left > lim) continue;
+          const t = norm(el.textContent);
+          if (!t || t.length > 40) continue;
+          out.push({ el: el, t: t, r: r });
         }
-        // 去重
-        const seen = new Set();
-        return out.filter(el => {
-          if (seen.has(el)) return false;
-          seen.add(el);
-          return true;
+        return out;
+      }
+
+      function findNameEl(name) {
+        const target = norm(name);
+        if (!target) return null;
+        const cands = leftLeaves();
+        const hits = [];
+        for (let i = 0; i < cands.length; i++) {
+          const c = cands[i];
+          if (JUNK.test(c.t)) continue;
+          let s = 0;
+          if (c.t === target) s = 4;
+          else if (c.t.length >= 2 && c.t.indexOf(target) >= 0) s = 3;
+          else if (target.indexOf(c.t) >= 0 && c.t.length >= 2) s = 2;
+          if (s > 0) hits.push({ el: c.el, r: c.r, s: s });
+        }
+        if (!hits.length) return null;
+        hits.sort(function (a, b) {
+          if (b.s !== a.s) return b.s - a.s;
+          return (a.r.width * a.r.height) - (b.r.width * b.r.height);
         });
+        return hits[0].el;
       }
 
-      function itemBox(span) {
-        let el = span;
-        for (let i = 0; i < 6 && el; i++) {
-          const cls = (el.className || "").toString();
-          if (/semi-list-item|conversation|session-item|chat-item/i.test(cls)) return el;
-          el = el.parentElement;
-        }
-        return span.parentElement || span;
-      }
-
-      function scrollHost(el) {
-        let p = el;
-        for (let i = 0; i < 12 && p; i++) {
-          if (p.scrollHeight > p.clientHeight + 40) {
+      // 从名字叶子往上找点击行
+      function rowOf(el) {
+        let p = el, fallback = el;
+        for (let i = 0; i < 10 && p && p !== document.body; i++) {
+          const r = rect(p);
+          if (r && r.height >= 36 && r.height <= 140 && r.width >= 140) fallback = p;
+          if (r && r.height >= 28 && r.width >= 100) {
+            const cls = String(p.className || "");
             const cs = getComputedStyle(p);
-            if (/(auto|scroll|overlay)/.test(cs.overflowY)) return p;
+            const clickable = cs.cursor === "pointer"
+              || p.getAttribute("role") === "button"
+              || p.tagName === "LI"
+              || /list-item|conversation|session|chat-item|conv-item/i.test(cls);
+            if (clickable) return p;
           }
           p = p.parentElement;
         }
-        // 兜底：找页面里最高且可滚动的容器
+        return fallback;
+      }
+
+      function scrollHost() {
         let best = null, bestH = 0;
-        document.querySelectorAll("div,ul").forEach(d => {
-          if (d.scrollHeight > d.clientHeight + 120 && d.clientHeight > 200) {
-            const cs = getComputedStyle(d);
-            if (/(auto|scroll|overlay)/.test(cs.overflowY) && d.scrollHeight > bestH) {
-              bestH = d.scrollHeight; best = d;
-            }
-          }
-        });
+        const all = document.querySelectorAll("div,ul,section,main");
+        for (let i = 0; i < all.length; i++) {
+          const d = all[i];
+          if (d.scrollHeight <= d.clientHeight + 60) continue;
+          if (d.clientHeight < 120) continue;
+          const r = rect(d);
+          if (!r || r.left > vw() * 0.62) continue;
+          const cs = getComputedStyle(d);
+          if (!/(auto|scroll|overlay)/.test(cs.overflowY)) continue;
+          if (d.scrollHeight > bestH) { bestH = d.scrollHeight; best = d; }
+        }
         return best;
       }
 
+      // iframe 里的内容 querySelectorAll 看不到，先探测出来给诊断用
+      function frameCount() {
+        try { return document.querySelectorAll("iframe").length; } catch (e) { return 0; }
+      }
+
+      function bodyText() {
+        return norm(document.body ? document.body.innerText : "");
+      }
+
       function loginWall() {
-        const txt = norm(document.body ? document.body.innerText : "");
-        if (/扫码登录|登录后查看|请先登录|验证码登录|密码登录/.test(txt)) return true;
-        if (pick(['[class*="login-panel"]', '[class*="login-modal"]', '[id*="login-container"]', '[class*="qrcode"]'])) return true;
-        if (location.href.indexOf("/login") >= 0) return true;
+        if (/\/login|passport\.|\/passport/i.test(location.href)) return true;
+        const qr = pick(['[class*="qrcode"]', '[class*="qr-code"]', '[class*="login-panel"]', '[class*="login-modal"]']);
+        if (qr) {
+          const r = rect(qr);
+          if (r && r.width > 80 && r.height > 80) return true;
+        }
+        // 已经有会话行 / 输入框 ⇒ 肯定登录了，早退避免误判
+        if (leftLeaves().length > 3) return false;
+        if (editorEl()) return false;
+        const txt = bodyText();
+        if (/扫码登录|登录后查看|请先登录/.test(txt)) return true;
         return false;
       }
 
-      function editorEl() {
-        return pick([
-          '[class*="chat-input"] [contenteditable="true"]',
-          '[class*="chat-input"] textarea',
-          'div[contenteditable="true"][class*="editor"]',
-          'div[contenteditable="true"]',
-          'textarea'
-        ]);
+      function editors() {
+        let list = [];
+        try {
+          list = Array.from(document.querySelectorAll('[contenteditable]:not([contenteditable="false"]),textarea,[role="textbox"]'));
+        } catch (e) { list = []; }
+        return list.filter(function (el) {
+          if (!visible(el)) return false;
+          const r = rect(el);
+          return r && r.height >= 18 && r.width >= 60;
+        });
       }
 
-      function fire(el, type, opts) {
-        const ev = new (type.startsWith("key") ? KeyboardEvent : (type === "input" || type.startsWith("before") ? InputEvent : Event))(type, Object.assign({ bubbles: true, cancelable: true, composed: true }, opts || {}));
-        el.dispatchEvent(ev);
+      // 输入框：优先右栏，其次屏幕最靠下的那个（聊天输入框永远贴着底部）
+      function editorEl() {
+        const list = editors();
+        if (!list.length) return null;
+        const lim = vw() * 0.24;
+        const right = list.filter(function (el) { const r = rect(el); return r && r.left >= lim; });
+        const pool = right.length ? right : list;
+        pool.sort(function (a, b) { return rect(b).top - rect(a).top; });
+        return pool[0];
       }
 
       function setText(el, text) {
-        el.focus();
-        const sel = window.getSelection();
-        const range = document.createRange();
-        range.selectNodeContents(el);
-        range.collapse(false);
-        sel.removeAllRanges();
-        sel.addRange(range);
+        if (!el) return "";
+        try { el.focus(); } catch (e) {}
+        const tag = (el.tagName || "").toUpperCase();
+        if (tag === "TEXTAREA" || tag === "INPUT") {
+          try {
+            const proto = tag === "TEXTAREA" ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+            const setter = Object.getOwnPropertyDescriptor(proto, "value").set;
+            setter.call(el, text);
+          } catch (e) { try { el.value = text; } catch (e2) {} }
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+          return readText(el);
+        }
+        try {
+          const sel = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          range.collapse(false);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        } catch (e) {}
         let ok = false;
         try { ok = document.execCommand("insertText", false, text); } catch (e) { ok = false; }
-        if (!ok || norm(el.innerText).length === 0) {
-          el.innerText = text;
-          fire(el, "input", { inputType: "insertText", data: text });
+        if (!ok || readText(el).length === 0) {
+          try { el.textContent = text; } catch (e) {}
+          try { el.dispatchEvent(new InputEvent("beforeinput", { bubbles: true, cancelable: true, inputType: "insertText", data: text })); } catch (e) {}
+          try { el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text })); } catch (e) {}
+          try { el.dispatchEvent(new Event("change", { bubbles: true })); } catch (e) {}
         }
-        fire(el, "keyup", { key: " ", code: "Space" });
-        return norm(el.innerText);
+        try { el.dispatchEvent(new Event("keyup", { bubbles: true })); } catch (e) {}
+        return readText(el);
       }
 
+      // 发送键：文本 / aria-label / title 三路，取面积最小的那个（最像按钮）
       function sendButton() {
-        const cands = Array.from(document.querySelectorAll('button, [role="button"], [class*="send"], span, div'))
-          .filter(visible)
-          .filter(el => /^(发送|Send|发 送)$/.test(norm(el.innerText)) && el.children.length <= 2);
-        return cands[0] || null;
+        const all = document.querySelectorAll('button,[role="button"],div,span,a');
+        const hits = [];
+        for (let i = 0; i < all.length; i++) {
+          const el = all[i];
+          if (!visible(el)) continue;
+          const r = rect(el);
+          if (!r || r.width < 12 || r.height < 12) continue;
+          if (r.top < 40) continue;
+          const t = norm(el.innerText);
+          const aria = norm(el.getAttribute("aria-label")) + " " + norm(el.getAttribute("title"));
+          const byText = t.length > 0 && t.length <= 8 && BTN.test(t) && el.children.length <= 3;
+          const byAria = /发送|send/i.test(aria) && aria.length <= 16;
+          if (!byText && !byAria) continue;
+          hits.push({ el: el, area: r.width * r.height });
+        }
+        if (!hits.length) return null;
+        hits.sort(function (a, b) { return a.area - b.area; });
+        return hits[0].el;
       }
 
       function pressEnter(el) {
-        const base = { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true, cancelable: true, composed: true };
-        el.dispatchEvent(new KeyboardEvent("keydown", base));
-        el.dispatchEvent(new KeyboardEvent("keypress", base));
-        el.dispatchEvent(new KeyboardEvent("keyup", base));
+        const base = { key: "Enter", code: "Enter", bubbles: true, cancelable: true, composed: true };
+        ["keydown", "keypress", "keyup"].forEach(function (t) {
+          let ev;
+          try { ev = new KeyboardEvent(t, base); } catch (e) { return; }
+          try { Object.defineProperty(ev, "keyCode", { get: function () { return 13; } }); } catch (e) {}
+          try { Object.defineProperty(ev, "which", { get: function () { return 13; } }); } catch (e) {}
+          try { el.dispatchEvent(ev); } catch (e) {}
+        });
+      }
+
+      function click(el) {
+        if (!el) return false;
+        try { el.scrollIntoView({ block: "center" }); } catch (e) {}
+        const r = rect(el);
+        if (!r) return false;
+        const x = Math.round(r.left + Math.min(r.width / 2, 60));
+        const y = Math.round(r.top + r.height / 2);
+        let target = el;
+        try { target = document.elementFromPoint(x, y) || el; } catch (e) { target = el; }
+        const opts = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, button: 0 };
+        ["pointerover", "pointerdown", "mousedown", "pointerup", "mouseup", "click"].forEach(function (t) {
+          try {
+            const Ctor = t.indexOf("pointer") === 0 ? (window.PointerEvent || window.MouseEvent) : window.MouseEvent;
+            target.dispatchEvent(new Ctor(t, opts));
+          } catch (e) {}
+        });
+        if (target !== el) {
+          try { el.dispatchEvent(new window.MouseEvent("click", opts)); } catch (e) {}
+        }
+        return true;
+      }
+
+      // 右栏顶部的会话标题，用于确认「确实点开了这个人」
+      function header() {
+        const out = [];
+        const all = document.querySelectorAll("div,span,h1,h2,h3,p");
+        const lim = vw() * 0.24;
+        for (let i = 0; i < all.length; i++) {
+          const el = all[i];
+          if (el.children.length > 2) continue;
+          const r = rect(el);
+          if (!r || r.top > 140 || r.left < lim) continue;
+          const t = norm(el.textContent);
+          if (!t || t.length > 30) continue;
+          out.push(t);
+        }
+        return out.slice(0, 4).join(" | ");
+      }
+
+      function friends() {
+        const seen = {};
+        const out = [];
+        const leaves = leftLeaves();
+        for (let i = 0; i < leaves.length; i++) {
+          const c = leaves[i];
+          if (c.t.length > 24) continue;
+          if (JUNK.test(c.t)) continue;
+          if (BTN.test(c.t)) continue;
+          let dup = false;
+          for (let k = 0; k < c.el.children.length; k++) {
+            if (norm(c.el.children[k].textContent) === c.t) { dup = true; break; }
+          }
+          if (dup) continue;
+          if (seen[c.t]) continue;
+          seen[c.t] = 1;
+          out.push(c.t);
+        }
+        return out.slice(0, 80);
       }
 
       const SK = {
-        version: 3,
-        sleep, norm, visible, pick, loginWall, editorEl, scrollHost, sendButton,
+        version: 4,
+        sleep: sleep, norm: norm, visible: visible, pick: pick, readText: readText,
+        loginWall: loginWall, editorEl: editorEl, editors: editors,
+        scrollHost: scrollHost, sendButton: sendButton, header: header,
+        friends: friends,
 
         async waitFor(fn, timeoutMs, stepMs) {
           const step = stepMs || 300;
@@ -149,92 +320,97 @@ enum DouyinJS {
           return null;
         },
 
-        friends() {
-          return nameSpans().map(el => norm(el.innerText));
+        findFriend(name) {
+          const el = findNameEl(name);
+          return el ? rowOf(el) : null;
         },
 
-        findFriend(name) {
-          const spans = nameSpans();
-          const target = norm(name);
-          if (!target) return null;
-          let hit = spans.find(el => norm(el.innerText) === target);
-          if (!hit) hit = spans.find(el => norm(el.innerText).indexOf(target) >= 0);
-          if (!hit) hit = spans.find(el => target.indexOf(norm(el.innerText)) >= 0 && norm(el.innerText).length >= 2);
-          return hit ? itemBox(hit) : null;
+        leftNames() {
+          return leftLeaves().map(function (c) { return c.t; }).slice(0, 80);
         },
 
         async scrollTo(name, maxScrolls) {
-          const host0 = scrollHost(document.body);
-          let found = SK.findFriend(name);
-          if (found) return found;
-          if (!host0) return null;
+          let found = findNameEl(name);
+          if (found) return rowOf(found);
+          const host = scrollHost();
+          if (!host) return null;
           for (let i = 0; i < (maxScrolls || 12); i++) {
-            host0.scrollTop = host0.scrollTop + Math.max(400, host0.clientHeight * 0.9);
-            await sleep(900);
-            found = SK.findFriend(name);
-            if (found) return found;
-            const noMore = /没有更多|暂无更多|no more/i.test(norm(document.body.innerText));
-            if (noMore && i > 1) break;
+            host.scrollTop = host.scrollTop + Math.max(300, host.clientHeight * 0.85);
+            await sleep(800);
+            found = findNameEl(name);
+            if (found) return rowOf(found);
+            if (i > 1 && /没有更多|暂无更多|no more/i.test(bodyText())) break;
           }
-          return SK.findFriend(name);
+          found = findNameEl(name);
+          return found ? rowOf(found) : null;
         },
 
-        click(el) {
-          if (!el) return false;
-          try { el.scrollIntoView({ block: "center" }); } catch (e) {}
-          const r = el.getBoundingClientRect();
-          const opts = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, view: window };
-          ["pointerdown", "mousedown", "pointerup", "mouseup", "click"].forEach(t => {
-            try {
-              const Ctor = t.startsWith("pointer") ? (window.PointerEvent || MouseEvent) : MouseEvent;
-              el.dispatchEvent(new Ctor(t, opts));
-            } catch (e) {}
-          });
-          return true;
-        },
+        click: click,
 
         async openFriend(name, timeoutMs, maxScrolls) {
-          if (SK.loginWall()) return { ok: false, reason: "login" };
+          if (loginWall()) return { ok: false, reason: "login" };
           const box = await SK.scrollTo(name, maxScrolls);
-          if (!box) return { ok: false, reason: "notfound", friends: SK.friends() };
-          SK.click(box);
-          const ed = await SK.waitFor(() => SK.editorEl(), timeoutMs || 20000);
-          if (!ed) return { ok: false, reason: "noeditor" };
-          await sleep(500);
-          return { ok: true, editor: true };
+          if (!box) return { ok: false, reason: "notfound", friends: friends().slice(0, 12) };
+          click(box);
+          const ed = await SK.waitFor(function () { return editorEl(); }, timeoutMs || 20000);
+          if (!ed) return { ok: false, reason: "noeditor", header: header(), friends: friends().slice(0, 12) };
+          await sleep(700);
+          return { ok: true, header: header() };
         },
 
         async type(text) {
-          const ed = await SK.waitFor(() => SK.editorEl(), 15000);
+          const ed = await SK.waitFor(function () { return editorEl(); }, 15000);
           if (!ed) return { ok: false, reason: "noeditor" };
           const got = setText(ed, text);
-          await sleep(350);
-          return { ok: got.length > 0, text: got };
+          await sleep(400);
+          const again = readText(editorEl() || ed);
+          return { ok: again.length > 0, text: again || got };
         },
 
         async submit() {
-          const ed = SK.editorEl();
-          if (!ed) return { ok: false, reason: "noeditor" };
-          const btn = SK.sendButton();
-          if (btn) { SK.click(btn); await sleep(600); }
-          pressEnter(ed);
+          const ed0 = editorEl();
+          if (!ed0) return { ok: false, reason: "noeditor" };
+          if (readText(ed0).length === 0) return { ok: false, reason: "empty" };
+          const cleared = function () { return readText(editorEl() || ed0).length === 0; };
+
+          let btn = sendButton();
+          if (btn) {
+            click(btn);
+            await sleep(900);
+            if (cleared()) return { ok: true, via: "button" };
+          }
+
+          pressEnter(ed0);
           await sleep(1200);
-          const left = ed ? norm(ed.innerText) : "";
-          if (left.length === 0) return { ok: true, via: btn ? "button+enter" : "enter" };
-          // 再补一次回车
-          pressEnter(ed);
-          await sleep(1200);
-          const left2 = norm(ed.innerText);
-          return { ok: left2.length === 0, via: "retry", leftover: left2.slice(0, 40) };
+          if (cleared()) return { ok: true, via: btn ? "button+enter" : "enter" };
+
+          btn = sendButton();
+          if (btn) {
+            click(btn);
+            await sleep(1300);
+            if (cleared()) return { ok: true, via: "button2" };
+          }
+
+          pressEnter(ed0);
+          await sleep(1500);
+          if (cleared()) return { ok: true, via: "enter2" };
+
+          return { ok: false, reason: "unsent", leftover: readText(editorEl() || ed0).slice(0, 40) };
         },
 
         state() {
           return {
             url: location.href,
             title: document.title,
-            login: SK.loginWall(),
-            friends: SK.friends().slice(0, 40),
-            editor: !!SK.editorEl()
+            login: loginWall(),
+            editor: !!editorEl(),
+            editorCount: editors().length,
+            header: header(),
+            friends: friends().slice(0, 40),
+            frames: frameCount(),
+            focus: document.hasFocus(),
+            vw: vw(),
+            vh: vh()
           };
         }
       };
@@ -249,19 +425,18 @@ enum DouyinJS {
     static let openAndType = #"""
     const sk = window.__SK;
     if (!sk) return { ok: false, reason: "nocore" };
-    if (sk.loginWall()) return { ok: false, reason: "login" };
+    if (sk.loginWall()) return { ok: false, reason: "login", url: location.href };
     const r = await sk.openFriend(name, timeoutMs, maxScrolls);
     if (!r.ok) return r;
     const t = await sk.type(message);
-    if (!t.ok) return { ok: false, reason: "typefail", detail: t };
-    return { ok: true, typed: t.text };
+    if (!t.ok) return { ok: false, reason: "typefail", detail: t, header: r.header };
+    return { ok: true, typed: t.text, header: r.header };
     """#
 
     static let submit = #"""
     const sk = window.__SK;
     if (!sk) return { ok: false, reason: "nocore" };
-    const r = await sk.submit();
-    return r;
+    return await sk.submit();
     """#
 
     static let state = #"""
@@ -276,7 +451,7 @@ enum DouyinJS {
     return { login: sk.loginWall(), url: location.href, title: document.title };
     """#
 
-    // MARK: - 诊断
+    // MARK: - 诊断：把页面真实结构摊开，方便一次定位是 iframe / URL / 选择器哪一层坏了
 
     static let diagnose = #"""
     const sk = window.__SK;
@@ -288,28 +463,75 @@ enum DouyinJS {
       const cs = getComputedStyle(el);
       return cs.visibility !== "hidden" && cs.display !== "none";
     };
-
-    // 采样列表项 class，方便按真实 DOM 调选择器
-    const classSet = new Set();
-    document.querySelectorAll('[class*="list-item"], [class*="item-header"], [class*="conversation"], [class*="session"]').forEach(el => {
-      String(el.className || "").split(/\s+/).forEach(c => {
-        if (/item|name|header|session|chat|conversation/i.test(c)) classSet.add(c);
-      });
-    });
-
-    const btns = Array.from(document.querySelectorAll('button, [role="button"]'))
-      .filter(vis).map(b => norm(b.innerText)).filter(t => t && t.length < 12).slice(0, 20);
-
-    return {
+    const out = {
       url: location.href,
       title: document.title,
-      login: sk ? sk.loginWall() : false,
-      editor: sk ? !!sk.editorEl() : false,
-      names: sk ? sk.friends().slice(0, 60) : [],
-      classes: Array.from(classSet).slice(0, 40),
-      buttons: btns,
-      scrollable: sk ? (() => { const h = sk.scrollHost(document.body); return h ? (h.className || "div") : "none"; })() : "none",
-      text: (document.body ? document.body.innerText : "").slice(0, 600)
+      vw: window.innerWidth || 0,
+      vh: window.innerHeight || 0,
+      focus: document.hasFocus(),
+      frames: document.querySelectorAll("iframe").length,
+      framesSrc: [],
+      login: false,
+      editor: false,
+      names: [],
+      buttons: [],
+      editors: [],
+      chains: [],
+      leftHtml: "",
+      text: ""
     };
+
+    try {
+      document.querySelectorAll("iframe").forEach(function (f) {
+        if (out.framesSrc.length < 5) out.framesSrc.push(norm(f.src).slice(0, 120));
+      });
+    } catch (e) {}
+
+    if (sk) {
+      out.login = sk.loginWall();
+      out.editor = !!sk.editorEl();
+      out.names = sk.friends().slice(0, 60);
+      out.buttons = Array.from(document.querySelectorAll('button,[role="button"]'))
+        .filter(vis)
+        .map(function (b) { return norm(b.innerText) || norm(b.getAttribute("aria-label")); })
+        .filter(function (t) { return t && t.length < 16; })
+        .slice(0, 24);
+      out.editors = document.querySelectorAll('[contenteditable],textarea,[role="textbox"]').length;
+
+      // 前 3 个会话名的祖先链，用来确认「点哪一层才是行」
+      const seen = {};
+      for (const el of document.querySelectorAll("div,span,a,li")) {
+        if (el.children.length > 1) continue;
+        const t = norm(el.textContent);
+        if (!t || t.length > 20 || seen[t]) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width < 2 || r.height < 2 || r.top > 900 || r.left > window.innerWidth * 0.62) continue;
+        seen[t] = 1;
+        const chain = [];
+        let p = el;
+        for (let i = 0; i < 7 && p && p !== document.body; i++) {
+          const rr = p.getBoundingClientRect();
+          chain.push(p.tagName + "." + String(p.className || "").split(/\s+/).slice(0, 2).join(".") + "[" + Math.round(rr.width) + "x" + Math.round(rr.height) + "]");
+          p = p.parentElement;
+        }
+        out.chains.push(t + "  =>  " + chain.join(" < "));
+        if (out.chains.length >= 3) break;
+      }
+
+      // 左栏前 1500 字符的 HTML，直接看出真实类名结构
+      let leftRoot = null, leftArea = 0;
+      document.querySelectorAll("div,ul,aside").forEach(function (d) {
+        const r = d.getBoundingClientRect();
+        if (r.width < 100 || r.height < 200) return;
+        if (r.left > window.innerWidth * 0.62) return;
+        if (d.getElementsByTagName("img").length === 0) return;
+        const a = r.width * r.height;
+        if (a > leftArea) { leftArea = a; leftRoot = d; }
+      });
+      if (leftRoot) out.leftHtml = leftRoot.outerHTML.replace(/\s+/g, " ").slice(0, 1500);
+    }
+
+    out.text = (document.body ? document.body.innerText : "").replace(/[ \t]+/g, " ").slice(0, 800);
+    return out;
     """#
 }

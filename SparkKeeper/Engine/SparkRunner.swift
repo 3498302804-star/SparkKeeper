@@ -51,8 +51,9 @@ final class SparkRunner {
             if Task.isCancelled { break }
             if !force, let last = acc.lastRun,
                Calendar.current.isDateInToday(last),
-               acc.lastResult.hasPrefix("成功") {
-                store.log("账号 \(acc.title) 今天已完成，跳过")
+               acc.lastResult.hasPrefix("成功"),
+               !acc.lastResult.contains("失败") {
+                store.log("账号 \(acc.title) 今天已全部成功，跳过")
                 continue
             }
             await runAccount(acc, settings: settings)
@@ -62,6 +63,19 @@ final class SparkRunner {
     }
 
     // MARK: - 单账号
+
+    /// 已经在私信页就不重新导航。
+    /// 每次 reload 要 3–10 秒，十几个目标累加直接超时；而且 reload 会重置
+    /// 列表滚动位置，等于把刚翻到的位置丢掉。
+    private func loadChatIfNeeded(_ url: String) async throws {
+        let session = WebSession.shared
+        if session.lastLoadedURL.contains("/following/chat") {
+            await session.injectCore()
+            return
+        }
+        try await session.load(url)
+        await session.injectCore()
+    }
 
     private func runAccount(_ acc: Account, settings: AppSettings) async {
         let store = Store.shared
@@ -88,11 +102,15 @@ final class SparkRunner {
 
             try await session.load(settings.chatURL)
             await session.injectCore()
-            _ = try? await session.js("""
-            if (!window.__SK) return false;
+            store.log("  私信页落点：\(session.lastLoadedURL)")
+
+            let warmed = await session.jsObject("""
+            if (!window.__SK) return { core: false, n: 0 };
             await window.__SK.waitFor(() => window.__SK.friends().length > 0, 15000);
-            return true;
+            return { core: true, n: window.__SK.friends().length, url: location.href };
             """)
+            let friendCount = (warmed["n"] as? Int) ?? 0
+            store.log("  会话列表预热：核心库 \((warmed["core"] as? Bool) == true ? "ok" : "缺失")，识别到 \(friendCount) 个会话")
 
             let state = await session.jsObject(DouyinJS.state)
             if (state["login"] as? Bool) == true {
@@ -118,8 +136,13 @@ final class SparkRunner {
 
                 for attempt in 1...2 {
                     do {
-                        try await session.load(settings.chatURL)
-                        await session.injectCore()
+                        if attempt == 1 {
+                            try await loadChatIfNeeded(settings.chatURL)
+                        } else {
+                            // 只有重试才真正重新导航
+                            try await session.load(settings.chatURL)
+                            await session.injectCore()
+                        }
                         let res = await session.jsObject(DouyinJS.openAndType, args: [
                             "name": t.name,
                             "message": msg,
@@ -131,6 +154,9 @@ final class SparkRunner {
                         if !opened {
                             let reason = (res["reason"] as? String) ?? "unknown"
                             detail = "打开失败:\(reason)"
+                            if let h = res["header"] as? String, !h.isEmpty {
+                                detail += " 会话头:\(String(h.prefix(30)))"
+                            }
                             if reason == "login" {
                                 store.update(acc.id) { $0.needLogin = true }
                                 break

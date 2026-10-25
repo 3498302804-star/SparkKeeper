@@ -8,7 +8,12 @@ final class Store: ObservableObject {
 
     @Published var accounts: [Account] = []
     @Published var history: [RunRecord] = []
-    @Published var settings: AppSettings = AppSettings()
+    /// 设置改动即落盘。旧实现只在设置页 onDisappear 存，用户改完直接杀 App 就丢配置。
+    @Published var settings: AppSettings = AppSettings() {
+        didSet {
+            if !suppressSave { save() }
+        }
+    }
     @Published var running: Bool = false
     @Published var liveLog: [String] = []
 

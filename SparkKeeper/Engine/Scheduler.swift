@@ -32,15 +32,26 @@ final class Scheduler {
         }
     }
 
+    private var currentTask: Task<Void, Never>?
+
     private func handle(_ task: BGAppRefreshTask) {
-        task.expirationHandler = {
-            Task { @MainActor in Store.shared.log("后台任务被系统回收（时间用尽）") }
-        }
-        Task { @MainActor in
+        // BGAppRefresh 通常只给 30 秒左右，而一次页面加载就可能 10 秒。
+        // 旧实现 expirationHandler 只打了条日志，工作继续跑但 task 已被系统回收，
+        // 结果是「跑了但什么都没发出去」。现在到期就真正取消本轮。
+        let work = Task { @MainActor in
             Store.shared.log("后台任务被系统唤起")
             Scheduler.shared.scheduleNext()
             await SparkRunner.shared.run(force: false)
             task.setTaskCompleted(success: true)
+        }
+        currentTask = work
+        task.expirationHandler = {
+            work.cancel()
+            task.setTaskCompleted(success: false)
+            Task { @MainActor in
+                Store.shared.log("后台任务时间用尽，本轮已取消")
+                Scheduler.shared.currentTask = nil
+            }
         }
     }
 
@@ -70,8 +81,9 @@ final class Scheduler {
     @MainActor
     private func startForegroundTimer(until date: Date) {
         timer?.invalidate()
-        let interval = max(20, min(1800, date.timeIntervalSinceNow))
-        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { _ in
+        // 已经过点就尽快跑（不要死等 20 秒）；还没到就分片上界 30 分钟内醒一次
+        let interval = max(2, min(1800, date.timeIntervalSinceNow))
+        let t = Timer(timeInterval: interval, repeats: false) { _ in
             Task { @MainActor in
                 let store = Store.shared
                 if store.settings.schedulerEnabled,
@@ -83,6 +95,9 @@ final class Scheduler {
                 }
             }
         }
+        // 默认 mode 下滚动列表/弹出 sheet 时 Timer 不触发，用 .common 覆盖
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
     }
 
     static func fmt(_ d: Date) -> String {
