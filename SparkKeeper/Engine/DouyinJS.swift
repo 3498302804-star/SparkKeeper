@@ -11,7 +11,7 @@ enum DouyinJS {
 
     static let core = #"""
     (function () {
-      if (window.__SK && window.__SK.version === 5) return "ok";
+      if (window.__SK && window.__SK.version === 6) return "ok";
 
       const sleep = (ms) => new Promise(r => setTimeout(r, ms));
       const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
@@ -79,6 +79,147 @@ enum DouyinJS {
         return out;
       }
 
+      // ===== 会话行定位 v6 =====
+      // v5 之前假设「会话列表在左栏」（rect.left <= vw*0.62）。实测不成立：
+      // 创作者中心的私信列表可能在右侧（首页 → 私信管理卡片），左栏反而是
+      // 「作品发布/首页/内容管理/数据中心…」这套全站菜单，于是抓到的全是菜单名，
+      // 真正的会话一个都认不出来，表现就是「卡在列表页、每个好友都 notfound」。
+      // v6 改成完全不看左右：用「头像 img」锚定每一行。
+
+      // 某个容器内的短文本叶子，按上到下排序
+      function textLeaves(root) {
+        const out = [];
+        if (!root) return out;
+        const all = root.querySelectorAll("*");
+        for (let i = 0; i < all.length; i++) {
+          const el = all[i];
+          if (el.children.length > 0) continue;
+          const r = rect(el);
+          if (!r || r.height < 10 || r.height > 44 || r.width < 12) continue;
+          const t = norm(el.textContent);
+          if (!t || t.length > 40) continue;
+          out.push({ el: el, t: t, r: r });
+        }
+        out.sort(function (a, b) { return a.r.top - b.r.top; });
+        return out;
+      }
+
+      // 从头像往上找这一行的容器：高 44–190、宽 ≥150，里面至少有一段短文本
+      function rowFromAvatar(img) {
+        let p = img.parentElement;
+        for (let i = 0; i < 9 && p && p !== document.body; i++) {
+          const r = rect(p);
+          if (r && r.height >= 44 && r.height <= 190 && r.width >= 150) {
+            const ls = textLeaves(p);
+            if (ls.length >= 2) return { el: p, leaves: ls };   // 名字 + 最后一条消息
+            if (ls.length === 1 && i >= 2) return { el: p, leaves: ls };
+          }
+          p = p.parentElement;
+        }
+        return null;
+      }
+
+      function rows() {
+        const avatars = [];
+        try {
+          const imgs = document.querySelectorAll("img");
+          for (let i = 0; i < imgs.length; i++) {
+            const im = imgs[i];
+            if (!visible(im)) continue;
+            const r = rect(im);
+            if (!r || r.width < 22 || r.width > 96 || r.height < 22 || r.height > 96) continue;
+            avatars.push(im);
+          }
+        } catch (e) {}
+
+        const cands = [];
+        for (let i = 0; i < avatars.length; i++) {
+          const row = rowFromAvatar(avatars[i]);
+          if (row && cands.indexOf(row) < 0) cands.push(row);
+        }
+        // 同一个行可能被不同头像判成不同层级的祖先，只保留最内层的那些
+        const inner = cands.filter(function (a) {
+          return !cands.some(function (b) { return b !== a && a.el.contains(b.el); });
+        });
+
+        const out = [];
+        for (let i = 0; i < inner.length; i++) {
+          const ls = inner[i].leaves;
+          if (!ls.length) continue;
+          const el = inner[i].el;
+          out.push({
+            el: el,
+            nameEl: ls[0].el,
+            name: ls[0].t,
+            preview: ls.length > 1 ? ls[1].t : "",
+            r: rect(el)
+          });
+        }
+        out.sort(function (x, y) {
+          return ((x.r && x.r.top) || 0) - ((y.r && y.r.top) || 0);
+        });
+        return out;
+      }
+
+      // 会话列表的滚动容器：从某一行往上找第一个真能滚的祖先
+      function rowsHost() {
+        const rs = rows();
+        for (let k = 0; k < rs.length; k++) {
+          let p = rs[k].el.parentElement;
+          for (let i = 0; i < 14 && p && p !== document.body; i++) {
+            const cs = getComputedStyle(p);
+            if (/(auto|scroll|overlay)/.test(cs.overflowY) && p.scrollHeight > p.clientHeight + 40) return p;
+            p = p.parentElement;
+          }
+        }
+        return null;
+      }
+
+      // 按名字在行里找，打分规则：原样全等 > 紧格式全等 > 包含
+      function findRow(name) {
+        const target = norm(name);
+        if (!target) return null;
+        const tg = tight(target);
+        const rs = rows();
+        const hits = [];
+        for (let i = 0; i < rs.length; i++) {
+          const row = rs[i];
+          const t = row.name;
+          if (!t || JUNK.test(t) || BTN.test(t)) continue;
+          const tt = tight(t);
+          let s = 0;
+          if (t === target) s = 5;
+          else if (tg && tt === tg) s = 4;
+          else if (t.length >= 2 && t.indexOf(target) >= 0) s = 3;
+          else if (tg && tg.length >= 2 && tt.indexOf(tg) >= 0) s = 3;
+          else if (target.indexOf(t) >= 0 && t.length >= 2) s = 2;
+          else if (tg && tt.length >= 2 && tg.indexOf(tt) >= 0) s = 2;
+          if (s > 0) hits.push({ row: row, s: s });
+        }
+        if (!hits.length) return null;
+        hits.sort(function (a, b) {
+          if (b.s !== a.s) return b.s - a.s;
+          const ar = a.row.r, br = b.row.r;
+          return ((ar ? ar.width * ar.height : 0) - (br ? br.width * br.height : 0));
+        });
+        return hits[0].row;
+      }
+
+      function friendNames() {
+        const seen = {};
+        const out = [];
+        const rs = rows();
+        for (let i = 0; i < rs.length; i++) {
+          const t = rs[i].name;
+          if (!t || t.length > 24) continue;
+          if (JUNK.test(t) || BTN.test(t)) continue;
+          if (seen[t]) continue;
+          seen[t] = 1;
+          out.push(t);
+        }
+        return out;
+      }
+
       function findNameEl(name) {
         const target = norm(name);
         if (!target) return null;
@@ -127,6 +268,9 @@ enum DouyinJS {
       }
 
       function scrollHost() {
+        // 先按「会话行在哪」定滚动容器，这是唯一可靠的锚点
+        const byRows = rowsHost();
+        if (byRows) return byRows;
         let best = null, bestH = 0;
         const all = document.querySelectorAll("div,ul,section,main");
         for (let i = 0; i < all.length; i++) {
@@ -159,6 +303,7 @@ enum DouyinJS {
           if (r && r.width > 80 && r.height > 80) return true;
         }
         // 已经有会话行 / 输入框 ⇒ 肯定登录了，早退避免误判
+        if (rows().length > 0) return false;
         if (leftLeaves().length > 3) return false;
         if (editorEl()) return false;
         const txt = bodyText();
@@ -287,7 +432,7 @@ enum DouyinJS {
           const el = all[i];
           if (el.children.length > 2) continue;
           const r = rect(el);
-          if (!r || r.top > 140 || r.left < lim) continue;
+          if (!r || r.top > 200 || r.left < lim) continue;
           const t = norm(el.textContent);
           if (!t || t.length > 30) continue;
           out.push(t);
@@ -296,31 +441,15 @@ enum DouyinJS {
       }
 
       function friends() {
-        const seen = {};
-        const out = [];
-        const leaves = leftLeaves();
-        for (let i = 0; i < leaves.length; i++) {
-          const c = leaves[i];
-          if (c.t.length > 24) continue;
-          if (JUNK.test(c.t)) continue;
-          if (BTN.test(c.t)) continue;
-          let dup = false;
-          for (let k = 0; k < c.el.children.length; k++) {
-            if (norm(c.el.children[k].textContent) === c.t) { dup = true; break; }
-          }
-          if (dup) continue;
-          if (seen[c.t]) continue;
-          seen[c.t] = 1;
-          out.push(c.t);
-        }
-        return out.slice(0, 80);
+        return friendNames().slice(0, 80);
       }
 
       const SK = {
-        version: 5,
+        version: 6,
         sleep: sleep, norm: norm, visible: visible, pick: pick, readText: readText,
         loginWall: loginWall, editorEl: editorEl, editors: editors,
-        scrollHost: scrollHost, sendButton: sendButton, header: header,
+        scrollHost: scrollHost, rowsHost: rowsHost, rows: rows, findRow: findRow,
+        sendButton: sendButton, header: header,
         friends: friends,
 
         async waitFor(fn, timeoutMs, stepMs) {
@@ -334,28 +463,33 @@ enum DouyinJS {
         },
 
         findFriend(name) {
-          const el = findNameEl(name);
-          return el ? rowOf(el) : null;
+          const row = findRow(name);
+          return row ? row.el : null;
         },
 
         leftNames() {
-          return leftLeaves().map(function (c) { return c.t; }).slice(0, 80);
+          return friendNames().slice(0, 80);
         },
 
         async scrollTo(name, maxScrolls) {
-          let found = findNameEl(name);
-          if (found) return rowOf(found);
-          const host = scrollHost();
+          let hit = findRow(name);
+          if (hit) return hit.el;
+          const host = rowsHost() || scrollHost();
           if (!host) return null;
+          const startTop = host.scrollTop;
           for (let i = 0; i < (maxScrolls || 12); i++) {
             host.scrollTop = host.scrollTop + Math.max(300, host.clientHeight * 0.85);
             await sleep(800);
-            found = findNameEl(name);
-            if (found) return rowOf(found);
+            hit = findRow(name);
+            if (hit) return hit.el;
             if (i > 1 && /没有更多|暂无更多|no more/i.test(bodyText())) break;
+            if (host.scrollTop === startTop) break;   // 已经滚不动了
           }
-          found = findNameEl(name);
-          return found ? rowOf(found) : null;
+          // 一轮没找到，回到顶部再来一轮
+          host.scrollTop = 0;
+          await sleep(700);
+          hit = findRow(name);
+          return hit ? hit.el : null;
         },
 
         click: click,
@@ -364,9 +498,22 @@ enum DouyinJS {
           if (loginWall()) return { ok: false, reason: "login" };
           const box = await SK.scrollTo(name, maxScrolls);
           if (!box) return { ok: false, reason: "notfound", friends: friends().slice(0, 12) };
+          const before = header();
           click(box);
-          const ed = await SK.waitFor(function () { return editorEl(); }, timeoutMs || 20000);
-          if (!ed) return { ok: false, reason: "noeditor", header: header(), friends: friends().slice(0, 12) };
+          let ed = await SK.waitFor(function () { return editorEl(); }, Math.min(6000, timeoutMs || 20000));
+          if (!ed) {
+            // 点整行没反应，改点名字本身 —— 有些列表把热区放在文字上
+            const row = findRow(name);
+            if (row && row.nameEl) {
+              click(row.nameEl);
+              ed = await SK.waitFor(function () { return editorEl(); },
+                                    Math.max(6000, (timeoutMs || 20000) - 6000));
+            }
+          }
+          if (!ed) {
+            return { ok: false, reason: "noeditor", header: header(), before: before,
+                     friends: friends().slice(0, 12) };
+          }
           await sleep(700);
           return { ok: true, header: header() };
         },
@@ -489,6 +636,7 @@ enum DouyinJS {
       names: [],
       buttons: [],
       editors: [],
+      rowCount: 0,
       chains: [],
       leftHtml: "",
       text: ""
@@ -511,37 +659,41 @@ enum DouyinJS {
         .slice(0, 24);
       out.editors = document.querySelectorAll('[contenteditable],textarea,[role="textbox"]').length;
 
-      // 前 3 个会话名的祖先链，用来确认「点哪一层才是行」
-      const seen = {};
-      for (const el of document.querySelectorAll("div,span,a,li")) {
-        if (el.children.length > 1) continue;
-        const t = norm(el.textContent);
-        if (!t || t.length > 20 || seen[t]) continue;
-        const r = el.getBoundingClientRect();
-        if (r.width < 2 || r.height < 2 || r.top > 900 || r.left > window.innerWidth * 0.62) continue;
-        seen[t] = 1;
+      // 会话行的真实祖先链 —— 直接取识别出来的行，比靠「左栏」猜准
+      const rs = sk.rows ? sk.rows() : [];
+      out.rowCount = rs.length;
+      for (let i = 0; i < rs.length && out.chains.length < 3; i++) {
         const chain = [];
-        let p = el;
-        for (let i = 0; i < 7 && p && p !== document.body; i++) {
+        let p = rs[i].nameEl || rs[i].el;
+        for (let j = 0; j < 8 && p && p !== document.body; j++) {
           const rr = p.getBoundingClientRect();
           chain.push(p.tagName + "." + String(p.className || "").split(/\s+/).slice(0, 2).join(".") + "[" + Math.round(rr.width) + "x" + Math.round(rr.height) + "]");
           p = p.parentElement;
         }
-        out.chains.push(t + "  =>  " + chain.join(" < "));
-        if (out.chains.length >= 3) break;
+        out.chains.push(rs[i].name + "  =>  " + chain.join(" < "));
       }
 
-      // 左栏前 1500 字符的 HTML，直接看出真实类名结构
-      let leftRoot = null, leftArea = 0;
-      document.querySelectorAll("div,ul,aside").forEach(function (d) {
-        const r = d.getBoundingClientRect();
-        if (r.width < 100 || r.height < 200) return;
-        if (r.left > window.innerWidth * 0.62) return;
-        if (d.getElementsByTagName("img").length === 0) return;
-        const a = r.width * r.height;
-        if (a > leftArea) { leftArea = a; leftRoot = d; }
-      });
-      if (leftRoot) out.leftHtml = leftRoot.outerHTML.replace(/\s+/g, " ").slice(0, 1500);
+      // 会话行所在容器的 HTML，直接看出真实类名结构
+      let listRoot = null, listArea = 0;
+      const anchors = rs.length ? [rs[0].el] : [];
+      if (anchors.length) {
+        let p = anchors[0].parentElement;
+        for (let i = 0; i < 8 && p && p !== document.body; i++) {
+          const r = p.getBoundingClientRect();
+          if (r.width >= 100 && r.height >= 150) { listRoot = p; break; }
+          p = p.parentElement;
+        }
+      }
+      if (!listRoot) {
+        document.querySelectorAll("div,ul,aside").forEach(function (d) {
+          const r = d.getBoundingClientRect();
+          if (r.width < 100 || r.height < 200) return;
+          if (d.getElementsByTagName("img").length === 0) return;
+          const a = r.width * r.height;
+          if (a > listArea) { listArea = a; listRoot = d; }
+        });
+      }
+      if (listRoot) out.leftHtml = listRoot.outerHTML.replace(/\s+/g, " ").slice(0, 1500);
     }
 
     out.text = (document.body ? document.body.innerText : "").replace(/[ \t]+/g, " ").slice(0, 800);
